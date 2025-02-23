@@ -2697,7 +2697,7 @@ class BarSeqFitnessFrame:
                 fit_data = dict(stan_data)
                 del fit_data["ligand_id"]
 
-                stan_init = init_stan_fit_single_point(stan_data)
+                stan_init = stan_utility.init_stan_fit_single_point(stan_data)
 
                 try:
                     if tf == "all":
@@ -2705,10 +2705,6 @@ class BarSeqFitnessFrame:
                             "stan_single_fitness_to_function() is not yet implemented for variants present in multiple sub-libraries"
                         )
 
-                    # logger.info("fit_data:")
-                    # for k, v in fit_data.items():
-                    #    logger.info(f"{k}: {v}")
-                    # logger.info()
                     stan_fit = stan_model.sample(
                         data=fit_data,
                         iter_sampling=iter_sampling,
@@ -3696,7 +3692,7 @@ class BarSeqFitnessFrame:
         per_well_log_std = []
         per_well_log_mu = []
         for i, w in enumerate(wells_to_plot):
-            c = [(plot_colors() * 8)[i]] * len(f_data)
+            c = [(plot_utils.plot_colors() * 8)[i]] * len(f_data)
             f_y = f_data["fraction_" + w]
             for ax in axs.flatten()[:2]:
                 ax.scatter(f_x, f_y, c=c)
@@ -4217,40 +4213,7 @@ class BarSeqFitnessFrame:
         fitness_columns_setup = self.get_fitness_columns_setup(
             plot_initials=plot_initials
         )
-        old_style_plots, linthresh, fit_plot_colors, plot_df = fitness_columns_setup
-
-        if self.plasmid in ["pVER", "pCymR"]:
-
-            def fit_funct(
-                x, log_g0, log_ginf, log_ec50, nx, low_fitness, mid_g, fitness_n
-            ):
-                return hill_function_utility.double_hill_funct(
-                    x,
-                    10**log_g0,
-                    10**log_ginf,
-                    10**log_ec50,
-                    nx,
-                    low_fitness,
-                    0,
-                    mid_g,
-                    fitness_n,
-                )
-        elif self.plasmid == "pRamR":
-
-            def fit_funct(
-                x, log_g0, log_ginf, log_ec50, nx, high_fitness, mid_g, fitness_n
-            ):
-                return double_hill_funct(
-                    x,
-                    10**log_g0,
-                    10**log_ginf,
-                    10**log_ec50,
-                    nx,
-                    0,
-                    high_fitness,
-                    mid_g,
-                    fitness_n,
-                )
+        _, linthresh, fit_plot_colors, plot_df = fitness_columns_setup
 
         fill_alpha = 0.2
 

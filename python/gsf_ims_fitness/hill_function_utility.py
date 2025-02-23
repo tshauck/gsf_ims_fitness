@@ -21,3 +21,43 @@ def double_hill_funct(x, g0, ginf, ec50, nx, f_min, f_max, g_50, ng):
     # g_50 is the gene expression of 1/2 max fitness
     # ng is the exponent that describes the steepness of the fitness vs. gene expression curve
     return hill_funct(hill_funct(x, g0, ginf, ec50, nx), f_min, f_max, g_50, ng)
+
+
+def get_double_hill_from_from_plasmid(plasmid: str):
+    if plasmid in ["pVER", "pCymR"]:
+
+        def fit_funct(x, log_g0, log_ginf, log_ec50, nx, low_fitness, mid_g, fitness_n):
+            return double_hill_funct(
+                x,
+                10**log_g0,
+                10**log_ginf,
+                10**log_ec50,
+                nx,
+                low_fitness,
+                0,
+                mid_g,
+                fitness_n,
+            )
+
+        return fit_funct
+
+    elif plasmid == "pRamR":
+
+        def fit_funct(
+            x, log_g0, log_ginf, log_ec50, nx, high_fitness, mid_g, fitness_n
+        ):
+            return double_hill_funct(
+                x,
+                10**log_g0,
+                10**log_ginf,
+                10**log_ec50,
+                nx,
+                0,
+                high_fitness,
+                mid_g,
+                fitness_n,
+            )
+
+        return fit_funct
+
+    raise ValueError(f"Plasmid {plasmid} not recognized.")
