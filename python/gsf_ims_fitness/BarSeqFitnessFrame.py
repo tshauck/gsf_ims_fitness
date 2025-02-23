@@ -348,7 +348,7 @@ class BarSeqFitnessFrame:
 
     def set_ref_samples(self, ref_samples):
         """
-        ### Sets the reference samples
+        Sets the reference samples
 
         Parameters:
         - `ref_samples`: List of reference samples (default: None)
@@ -370,7 +370,7 @@ class BarSeqFitnessFrame:
         overwrite=False,
     ):
         """
-        ### Trims and sums barcodes based on read counts
+        Trims and sums barcodes based on read counts
 
         Parameters:
         - `cutoff`: Cutoff for trimming barcodes (default: None)
@@ -438,7 +438,7 @@ class BarSeqFitnessFrame:
         overwrite=False,
     ):
         """
-        ### Labels reference sequences in the barcode frame
+        Labels reference sequences in the barcode frame
 
         Parameters:
         - `ref_seq_file_path`: Path to the reference sequence file
@@ -529,7 +529,7 @@ class BarSeqFitnessFrame:
 
     def mark_chimera_parents(self):
         """
-        ### Marks the parents of potential chimera barcodes
+        Marks the parents of potential chimera barcodes
         """
         barcode_frame = self.barcode_frame
 
@@ -559,7 +559,7 @@ class BarSeqFitnessFrame:
 
     def flag_possible_chimeras(self, use_faster_search=True, faster_search_ratio=10):
         """
-        ### Flags potential chimera barcodes
+        Flags potential chimera barcodes
 
         Parameters:
         - `use_faster_search`: Whether to use a faster search algorithm (default: True)
@@ -622,7 +622,7 @@ class BarSeqFitnessFrame:
 
     def mark_actual_chimeras(self, chimera_cut_line, auto_save=True, overwrite=False):
         """
-        ### Marks actual chimera barcodes based on a cutoff
+        Marks actual chimera barcodes based on a cutoff
 
         Parameters:
         - `chimera_cut_line`: Function to determine the cutoff
@@ -670,7 +670,7 @@ class BarSeqFitnessFrame:
         show_progress=False,
     ):
         """
-        ### Runs a Stan model to determine the slope of log(count ratio) for barcodes
+        Runs a Stan model to determine the slope of log(count ratio) for barcodes
 
         Parameters:
         - `index`: Index of the barcode to run the model for (default: None)
@@ -812,7 +812,7 @@ class BarSeqFitnessFrame:
 
     def display_viewable_plate_layouts(self):
         """
-        ### Displays the viewable plate layouts
+        Displays the viewable plate layouts
         """
         sample_plate_map = self.sample_plate_map
         col_contents = []
