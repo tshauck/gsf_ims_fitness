@@ -33,7 +33,9 @@ import seaborn as sns
 
 from . import fitness
 from . import stan_utility
+from . import plot_utils
 from . import align_tf_helpers
+from . import hill_function_utility
 
 sns.set()
 
@@ -2163,18 +2165,7 @@ class BarSeqFitnessFrame:
         logger.info("      Method version from 2023-06-04")
 
         barcode_frame = self.barcode_frame
-
-        fitness_columns_setup = self.get_fitness_columns_setup(plot_initials=[initial])
         ligand_list = self.ligand_list
-
-        if fitness_columns_setup[0]:
-            old_style_columns, x, linthresh, fit_plot_colors = fitness_columns_setup
-
-            plot_df = None
-        else:
-            old_style_columns, linthresh, fit_plot_colors, plot_df = (
-                fitness_columns_setup
-            )
 
         if len(ligand_list) == 1:
             sm_file = "Double Hill equation fit.stan"
@@ -2292,16 +2283,20 @@ class BarSeqFitnessFrame:
                     logger.info(f"Manually setting log_x_max: {log_x_max}")
 
                 if len(lig_list) == 1:
-                    stan_init = init_stan_fit_single_ligand(
+                    stan_init = stan_utility.init_stan_fit_single_ligand(
                         stan_data, fit_fitness_difference_params
                     )
                 elif len(lig_list) == 2:
-                    stan_init = init_stan_fit_two_lig_two_tet(
+                    stan_init = stan_utility.init_stan_fit_two_lig_two_tet(
                         stan_data, fit_fitness_difference_params
                     )
                 elif len(lig_list) == 3:
-                    stan_init = init_stan_fit_three_ligand(
+                    stan_init = stan_utility.init_stan_fit_three_ligand(
                         stan_data, fit_fitness_difference_params, plasmid=plasmid
+                    )
+                else:
+                    raise ValueError(
+                        f"Invalid number of ligands: {len(lig_list)} for fitting"
                     )
 
                 # logger.info("stan_data:")
@@ -3084,7 +3079,7 @@ class BarSeqFitnessFrame:
                     st_row, initial=initial, is_gp_model=True
                 )
 
-                stan_init = init_stan_GP_fit(
+                stan_init = stan_utility.init_stan_GP_fit(
                     fit_fitness_difference_params,
                     single_tet=single_tet,
                     single_ligand=single_ligand,
@@ -3554,7 +3549,7 @@ class BarSeqFitnessFrame:
             logger.info(f"Time point {i+1}, geometric stdev: {geo_std:.2f}-fold")
             logger.info(f"            maximum differnce: {geo_max:.2f}-fold")
 
-        ax.scatter(index_list, r12, c=plot_colors96(), s=50)
+        ax.scatter(index_list, r12, c=plot_utils.plot_colors96(), s=50)
         for i in range(13):
             ax.plot(
                 [i * 8 + 0.5, i * 8 + 0.5],
@@ -4229,7 +4224,7 @@ class BarSeqFitnessFrame:
             def fit_funct(
                 x, log_g0, log_ginf, log_ec50, nx, low_fitness, mid_g, fitness_n
             ):
-                return double_hill_funct(
+                return hill_function_utility.double_hill_funct(
                     x,
                     10**log_g0,
                     10**log_ginf,
@@ -4470,7 +4465,7 @@ class BarSeqFitnessFrame:
                         mid_g,
                         fitness_n,
                     ):
-                        return double_hill_funct(
+                        return hill_function_utility.double_hill_funct(
                             x,
                             10**log_g0,
                             10**log_ginf,
@@ -5623,7 +5618,7 @@ class BarSeqFitnessFrame:
                         )
 
                         if re_stan_on_rhat:
-                            logger.info(f"    Checking r_hat...")
+                            logger.info("    Checking r_hat...")
                             rhat_params = stan_utility.check_rhat_by_params(
                                 stan_fit,
                                 rhat_cutoff=rhat_cutoff,
@@ -6598,181 +6593,3 @@ class BarSeqFitnessFrame:
             initial = "laci"
 
         return initial
-
-
-def plot_colors():
-    return sns.hls_palette(12, l=0.4, s=0.8)
-
-
-def plot_colors96():
-    p_c12 = []
-    for c in plot_colors():
-        for i in range(8):
-            p_c12.append(c)
-    return p_c12
-
-
-def plot_colors48():
-    p_c12 = []
-    for c in plot_colors():
-        for i in range(4):
-            p_c12.append(c)
-    return p_c12
-
-
-def hill_funct(x, low, high, mid, n):
-    return low + (high - low) * (x**n) / (mid**n + x**n)
-
-
-# Hill function of Hill function to describe fitness_difference(gene_expression([inducer]))
-def double_hill_funct(x, g0, ginf, ec50, nx, f_min, f_max, g_50, ng):
-    # g0, ginf, ec50, and nx are characteristics of individual sensor variants
-    # g0 is the gene epxression level at zero inducer
-    # ginf is the gene expresion level at full induction
-    # ec50 is the inducer concentration of 1/2 max gene expression
-    # nx is the exponent that describes the steepness of the sensor response curve
-    # f_min, f_max, g_50, and ng are characteristics of the selection system
-    # they are estimated from the fits above
-    # f_min is the minimum fitness level, at zero gene expression
-    # f_max is the maximum fitness level, at infinite gene expression (= 0)
-    # g_50 is the gene expression of 1/2 max fitness
-    # ng is the exponent that describes the steepness of the fitness vs. gene expression curve
-    return hill_funct(hill_funct(x, g0, ginf, ec50, nx), f_min, f_max, g_50, ng)
-
-
-def init_stan_fit_single_ligand(stan_data, fit_fitness_difference_params):
-    x_data = stan_data["x"]
-    y_data = stan_data["y"]
-    log_g0 = log_level(np.mean(y_data[:2]))
-    log_ginf = log_level(np.mean(y_data[-2:]))
-
-    min_ic = np.log10(min([i for i in x_data if i > 0]))
-    max_ic = np.log10(max(x_data))
-    log_ec50 = np.random.uniform(min_ic, max_ic)
-
-    n = np.random.uniform(1.3, 1.7)
-
-    sig = np.random.uniform(1, 3)
-
-    low_fitness = fit_fitness_difference_params[0][0]
-    mid_g = fit_fitness_difference_params[0][1]
-    fitness_n = fit_fitness_difference_params[0][2]
-
-    return dict(
-        log_g0=log_g0,
-        log_ginf=log_ginf,
-        log_ec50=log_ec50,
-        sensor_n=n,
-        sigma=sig,
-        low_fitness=low_fitness,
-        mid_g=mid_g,
-        fitness_n=fitness_n,
-    )
-
-
-def init_stan_fit_two_lig_two_tet(stan_data, fit_fitness_difference_params):
-    min_ic = np.log10(min(stan_data["x_1"]))
-    max_ic = np.log10(max(stan_data["x_1"]))
-    log_ec50_1 = np.random.uniform(min_ic, max_ic)
-    log_ec50_2 = np.random.uniform(min_ic, max_ic)
-
-    n_1 = np.random.uniform(1.3, 1.7)
-    n_2 = np.random.uniform(1.3, 1.7)
-
-    sig = np.random.uniform(1, 3)
-
-    # Indices for x_y_s_list[ligand][tet][x,y,s][n]
-    return dict(
-        log_g0=log_level(stan_data["y_0_low_tet"]),
-        log_ginf_1=log_level(np.mean(stan_data["y_1_high_tet"][-2:])),
-        log_ginf_2=log_level(np.mean(stan_data["y_2_high_tet"][-2:])),
-        log_ec50_1=log_ec50_1,
-        log_ec50_2=log_ec50_2,
-        sensor_n_1=n_1,
-        sensor_n_2=n_2,
-        sigma=sig,
-        low_fitness_low_tet=fit_fitness_difference_params[0][0],
-        mid_g_low_tet=fit_fitness_difference_params[0][1],
-        fitness_n_low_tet=fit_fitness_difference_params[0][2],
-        low_fitness_high_tet=fit_fitness_difference_params[1][0],
-        mid_g_high_tet=fit_fitness_difference_params[1][1],
-        fitness_n_high_tet=fit_fitness_difference_params[1][2],
-    )
-
-
-def init_stan_fit_three_ligand(
-    stan_data, fit_fitness_difference_params, plasmid="pRamR"
-):
-    min_ic = np.log10(min(stan_data["x_1"]))
-    max_ic = np.log10(max(stan_data["x_1"]))
-    log_ec50_1 = np.random.uniform(min_ic, max_ic)
-    log_ec50_2 = np.random.uniform(min_ic, max_ic)
-    log_ec50_3 = np.random.uniform(min_ic, max_ic)
-
-    n_1 = np.random.uniform(1.3, 1.7)
-    n_2 = np.random.uniform(1.3, 1.7)
-    n_3 = np.random.uniform(1.3, 1.7)
-
-    sig = np.random.uniform(1, 3)
-
-    # Indices for x_y_s_list[ligand][tet][x,y,s][n]
-    ret_dict = dict(
-        log_g0=log_level(np.mean(stan_data["y_0"]), plasmid=plasmid),
-        log_ginf_1=log_level(np.mean(stan_data["y_1"][-2:]), plasmid=plasmid),
-        log_ginf_2=log_level(np.mean(stan_data["y_2"][-2:]), plasmid=plasmid),
-        log_ginf_3=log_level(np.mean(stan_data["y_3"][-2:]), plasmid=plasmid),
-        log_ec50_1=log_ec50_1,
-        log_ec50_2=log_ec50_2,
-        log_ec50_3=log_ec50_3,
-        sensor_n_1=n_1,
-        sensor_n_2=n_2,
-        sensor_n_3=n_3,
-        sigma=sig,
-        mid_g=fit_fitness_difference_params[0][1],
-        fitness_n=fit_fitness_difference_params[0][2],
-    )
-    if plasmid == "pRamR":
-        ret_dict["high_fitness"] = fit_fitness_difference_params[0][0]
-    else:
-        ret_dict["low_fitness"] = fit_fitness_difference_params[0][0]
-    return ret_dict
-
-
-def init_stan_fit_single_point(stan_data):
-    sig = np.random.uniform(1, 3)
-
-    return dict(
-        sigma=sig,
-        low_fitness=stan_data["low_fitness_mu"],
-        mid_g=stan_data["mid_g_mu"],
-        fitness_n=stan_data["fitness_n_mu"],
-    )
-
-
-def log_level(fitness_difference, plasmid="pVER"):
-    if plasmid == "pVER":
-        log_g = 1.439 * fitness_difference + 3.32
-        log_g = log_g * np.random.uniform(0.9, 1.1)
-        if log_g < 1.5:
-            log_g = 1.5
-        if log_g > 4:
-            log_g = 4
-        return log_g
-    elif plasmid == "pRamR":
-        log_g = -2.1 * fitness_difference / 1.5 + 2
-        log_g = log_g * np.random.uniform(0.9, 1.1)
-        if log_g < 2:
-            log_g = 2
-        if log_g > 4.5:
-            log_g = 4.5
-        return log_g
-    elif plasmid == "pCymR":
-        log_g = np.log10(200) * (1 + fitness_difference)
-        log_g = log_g * np.random.uniform(0.9, 1.1)
-        if log_g < 0:
-            log_g = 0
-        if log_g > np.log10(300):
-            log_g = np.log10(300)
-        return log_g
-
-    raise ValueError(f"Unexpected plasmid: {plasmid}")
