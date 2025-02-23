@@ -58,34 +58,24 @@ logger = logging.getLogger(__name__)
 class BarSeqFitnessFrame:
     def __init__(
         self,
-        data_directory,
+        data_directory: pathlib.Path,
+        growth_plate_layout_file: pathlib.Path,
+        experiment: str,
         notebook_dir=None,
-        experiment=None,
         barcode_file=None,
-        antibiotic_conc_list=[0, 20],
         inducer_conc_lists=None,
-        ligand_list=["IPTG"],
-        antibiotic="tet",
         min_read_count=500,
         ref_samples=None,
-        plasmid="pVER",  # A designation for the plasmid used for the flow cytometry calibration data
-        get_layout_from_file=False,
-        growth_plate_layout_file=None,
+        plasmid="pVER",
         single_barcode=False,
         merge_dist_cutoff=2,
     ):
-        # inducer_2=None, inducer_conc_list_2=None,
-
         self.notebook_dir = notebook_dir
-
-        if experiment is None:
-            experiment = fitness.get_exp_id(notebook_dir)
-
+        self.data_directory = data_directory
+        self.growth_plate_layout_file = growth_plate_layout_file
         self.experiment = experiment
 
         logger.info(f"Importing BarSeq count data for experiment: {experiment}")
-
-        self.data_directory = data_directory
 
         if barcode_file is None:
             barcode_file = self.data_directory.glob("*.trimmed_sorted_counts.csv")[0]
@@ -325,8 +315,7 @@ class BarSeqFitnessFrame:
 
         self.plasmid = plasmid
 
-        if growth_plate_layout_file is None:
-            growth_plate_layout_file = self.find_growth_plate_layout_file()
+        self.growth_plate_layout_file = growth_plate_layout_file
 
         self.set_sample_plate_map(
             auto_save=False,
@@ -349,19 +338,6 @@ class BarSeqFitnessFrame:
         self.ligand_list = lig_id_list
 
         self.set_ref_samples(ref_samples)
-
-    def find_growth_plate_layout_file(self):
-        notebook_dir = self.notebook_dir
-        experiment = self.experiment
-
-        exp_directory = notebook_dir[: notebook_dir.find(experiment)] + experiment
-        os.chdir(exp_directory)
-
-        ret_file = glob.glob("*growth-plate_5.csv")[0]
-
-        ret_file = exp_directory + "\\" + ret_file
-
-        return ret_file
 
     def set_ref_samples(self, ref_samples):
         if ref_samples is None:

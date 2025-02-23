@@ -335,7 +335,6 @@ def get_sample_plate_map(
         logger.info(
             f"Automatically importing layout info from {growth_plate_layout_file}"
         )
-        logger.info()
 
         gp_frame = pd.read_csv(growth_plate_layout_file)
         df = gp_frame
