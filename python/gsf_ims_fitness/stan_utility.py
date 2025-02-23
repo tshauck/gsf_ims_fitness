@@ -479,7 +479,6 @@ def get_stan_data(
     apply_ramr_correction=True,
     ramr_fitness_correction=None,
     ramr_fitness_correction_params=None,
-    ramr_resid_frame=None,
 ):
     log_g_min, log_g_max, log_g_prior_scale, _ = log_g_limits(plasmid=plasmid)
 
@@ -815,3 +814,54 @@ def get_spike_in_name_from_inital(plasmid, initial):
             raise ValueError(f"spike-in initial not recognized: {initial}")
 
     return spike_in
+
+
+def init_stan_GP_fit(fit_fitness_difference_params, single_tet, plasmid="pVER"):
+    sig = np.random.uniform(1, 3)
+    rho = np.random.uniform(0.9, 1.1)
+    alpha = np.random.uniform(0.009, 0.011)
+
+    if plasmid == "pVER":
+        if single_tet:
+            low_fitness = fit_fitness_difference_params[0][0]
+            mid_g = fit_fitness_difference_params[0][1]
+            fitness_n = fit_fitness_difference_params[0][2]
+
+            return dict(
+                sigma=sig,
+                low_fitness=low_fitness,
+                mid_g=mid_g,
+                fitness_n=fitness_n,
+                rho=rho,
+                alpha=alpha,
+            )
+        else:
+            return dict(
+                sigma=sig,
+                rho=rho,
+                alpha=alpha,
+                low_fitness_low_tet=fit_fitness_difference_params[0][0],
+                mid_g_low_tet=fit_fitness_difference_params[0][1],
+                fitness_n_low_tet=fit_fitness_difference_params[0][2],
+                low_fitness_high_tet=fit_fitness_difference_params[1][0],
+                mid_g_high_tet=fit_fitness_difference_params[1][1],
+                fitness_n_high_tet=fit_fitness_difference_params[1][2],
+            )
+    elif plasmid == "pRamR":
+        return dict(
+            sigma=sig,
+            rho=rho,
+            alpha=alpha,
+            high_fitness=fit_fitness_difference_params[0][0],
+            mid_g=fit_fitness_difference_params[0][1],
+            fitness_n=fit_fitness_difference_params[0][2],
+        )
+    elif plasmid == "pCymR":
+        return dict(
+            sigma=sig,
+            rho=rho,
+            alpha=alpha,
+            low_fitness=fit_fitness_difference_params[0][0],
+            mid_g=fit_fitness_difference_params[0][1],
+            fitness_n=fit_fitness_difference_params[0][2],
+        )

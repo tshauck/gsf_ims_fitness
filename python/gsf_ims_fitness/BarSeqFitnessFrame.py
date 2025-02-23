@@ -33,6 +33,7 @@ import seaborn as sns
 
 from . import fitness
 from . import stan_utility
+from . import align_tf_helpers
 
 sns.set()
 
@@ -1406,8 +1407,8 @@ class BarSeqFitnessFrame:
             axs = axs.flatten()
 
             plot_list = plot_list_0
-            if (self.plasmid == "Align-TF") and ("norm" not in row.RS_name):
-                tf = align_tf_from_RS_name(row.RS_name)
+            if self.plasmid == "Align-TF" and ("norm" not in row.RS_name):
+                tf = align_tf_helpers.align_tf_from_RS_name(row.RS_name)
                 df_tf = sample_plate_map
                 df_tf = df_tf[df_tf.transcription_factor == tf]
                 samples_with_tf = np.unique(df_tf.sample_id)
@@ -2032,7 +2033,8 @@ class BarSeqFitnessFrame:
             if self.plasmid == "Align-TF":
                 # Only plot residuals for rows/variants that are in each sample
                 sel_tf = [
-                    (align_tf_from_RS_name(x) == tf_dict[samp]) or ("norm" in x)
+                    (align_tf_helpers.align_tf_from_RS_name(x) == tf_dict[samp])
+                    or ("norm" in x)
                     for x in df_bc.RS_name
                 ]
                 df_bc = df_bc[sel_tf]
@@ -2648,7 +2650,7 @@ class BarSeqFitnessFrame:
         def stan_fit_row(st_row, return_fit=False):
             st_index = st_row.name
             tf = st_row.transcription_factor
-            ligand = align_ligand_from_tf(tf)
+            ligand = align_tf_helpers.align_ligand_from_tf(tf)
             logger.info()
             now = datetime.datetime.now()
             logger.info(
@@ -2832,7 +2834,7 @@ class BarSeqFitnessFrame:
 
         # Then, add the fit results to barcode_frame:
         tf_list = np.unique(sample_plate_map.transcription_factor)
-        ligand_list = [align_ligand_from_tf(tf) for tf in tf_list]
+        ligand_list = [align_tf_helpers.align_ligand_from_tf(tf) for tf in tf_list]
         non_zero_lig_conc_dict = {}
         for tf, lig in zip(tf_list, ligand_list):
             df = sample_plate_map
@@ -4133,7 +4135,7 @@ class BarSeqFitnessFrame:
                     )
                     ax.set_xscale("symlog", linthresh=linthresh)
                     if (self.plasmid == "Align-TF") and (tf != "all"):
-                        x_lab = align_ligand_from_tf(tf)
+                        x_lab = align_tf_helpers.align_ligand_from_tf(tf)
                     else:
                         x_lab = "], [".join(ligand_list)
                     ax.set_xlabel(f"[{x_lab}] (umol/L)", size=ax_label_size)
@@ -5231,7 +5233,7 @@ class BarSeqFitnessFrame:
 
                                     if plasmid == "Align-TF":
                                         # For Align-TF project, measurements at zero ligand and one non-zero ligand per TF
-                                        tf = align_tf_from_ligand(lig)
+                                        tf = align_tf_helpers.align_tf_from_ligand(lig)
                                         plot_df_align = plot_df
                                         plot_df_align = plot_df_align[
                                             plot_df_align.transcription_factor == tf
@@ -5499,7 +5501,7 @@ class BarSeqFitnessFrame:
                                         )
                     elif len(df) == 0:
                         if plasmid == "Align-TF":
-                            tf = align_tf_from_ligand(lig)
+                            tf = align_tf_helpers.align_tf_from_ligand(lig)
                             if ("norm" not in RS_name) and (tf in plas):
                                 logger.info(
                                     f"No cytometry data for {RS_name}, {plas} with {lig}"
@@ -6359,7 +6361,8 @@ class BarSeqFitnessFrame:
             tf = st_row.transcription_factor
             if tf == "all":
                 return None
-            lig = align_ligand_from_tf(tf)
+
+            lig = align_tf_helpers.align_ligand_from_tf(tf)
             sample_map = sample_map[sample_map.transcription_factor == tf]
 
             ligand_concentrations = np.unique(sample_map[lig])
@@ -6746,59 +6749,6 @@ def init_stan_fit_single_point(stan_data):
     )
 
 
-def init_stan_GP_fit(
-    fit_fitness_difference_params, single_tet, single_ligand, plasmid="pVER"
-):
-    sig = np.random.uniform(1, 3)
-    rho = np.random.uniform(0.9, 1.1)
-    alpha = np.random.uniform(0.009, 0.011)
-
-    if plasmid == "pVER":
-        if single_tet:
-            low_fitness = fit_fitness_difference_params[0][0]
-            mid_g = fit_fitness_difference_params[0][1]
-            fitness_n = fit_fitness_difference_params[0][2]
-
-            return dict(
-                sigma=sig,
-                low_fitness=low_fitness,
-                mid_g=mid_g,
-                fitness_n=fitness_n,
-                rho=rho,
-                alpha=alpha,
-            )
-        else:
-            return dict(
-                sigma=sig,
-                rho=rho,
-                alpha=alpha,
-                low_fitness_low_tet=fit_fitness_difference_params[0][0],
-                mid_g_low_tet=fit_fitness_difference_params[0][1],
-                fitness_n_low_tet=fit_fitness_difference_params[0][2],
-                low_fitness_high_tet=fit_fitness_difference_params[1][0],
-                mid_g_high_tet=fit_fitness_difference_params[1][1],
-                fitness_n_high_tet=fit_fitness_difference_params[1][2],
-            )
-    elif plasmid == "pRamR":
-        return dict(
-            sigma=sig,
-            rho=rho,
-            alpha=alpha,
-            high_fitness=fit_fitness_difference_params[0][0],
-            mid_g=fit_fitness_difference_params[0][1],
-            fitness_n=fit_fitness_difference_params[0][2],
-        )
-    elif plasmid == "pCymR":
-        return dict(
-            sigma=sig,
-            rho=rho,
-            alpha=alpha,
-            low_fitness=fit_fitness_difference_params[0][0],
-            mid_g=fit_fitness_difference_params[0][1],
-            fitness_n=fit_fitness_difference_params[0][2],
-        )
-
-
 def log_level(fitness_difference, plasmid="pVER"):
     if plasmid == "pVER":
         log_g = 1.439 * fitness_difference + 3.32
@@ -6825,31 +6775,4 @@ def log_level(fitness_difference, plasmid="pVER"):
             log_g = np.log10(300)
         return log_g
 
-
-def align_tf_from_ligand(lig):
-    # TODO: edit this to use sample_plate_map
-    if lig == "IPTG":
-        return "LacI"
-    if lig == "1S-TIQ":
-        return "RamR"
-    if lig == "Van":
-        return "VanR"
-
-
-def align_ligand_from_tf(tf):
-    # TODO: edit this to use sample_plate_map
-    if tf == "LacI":
-        return "IPTG"
-    if tf == "RamR":
-        return "1S-TIQ"
-    if tf == "VanR":
-        return "Van"
-
-
-def align_tf_from_RS_name(rs):
-    if "LacI" in rs:
-        return "LacI"
-    if "RamR" in rs:
-        return "RamR"
-    if "VanR" in rs:
-        return "VanR"
+    raise ValueError(f"Unexpected plasmid: {plasmid}")
