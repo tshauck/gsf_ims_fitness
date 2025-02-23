@@ -7,7 +7,6 @@ Created on Fri Nov 22 09:29:34 2019
 
 import logging
 import pathlib
-import glob
 import os
 import sys
 import warnings
@@ -61,8 +60,7 @@ class BarSeqFitnessFrame:
         data_directory: pathlib.Path,
         growth_plate_layout_file: pathlib.Path,
         experiment: str,
-        notebook_dir=None,
-        barcode_file=None,
+        barcode_file: pathlib.Path,
         inducer_conc_lists=None,
         min_read_count=500,
         ref_samples=None,
@@ -70,17 +68,10 @@ class BarSeqFitnessFrame:
         single_barcode=False,
         merge_dist_cutoff=2,
     ):
-        self.notebook_dir = notebook_dir
         self.data_directory = data_directory
         self.growth_plate_layout_file = growth_plate_layout_file
         self.experiment = experiment
 
-        logger.info(f"Importing BarSeq count data for experiment: {experiment}")
-
-        if barcode_file is None:
-            barcode_file = self.data_directory.glob("*.trimmed_sorted_counts.csv")[0]
-
-        logger.info(f"Importing BarSeq count data from file: {barcode_file}")
         barcode_frame = pd.read_csv(barcode_file, skipinitialspace=True)
 
         # Add barcode cluster IDs and scores
@@ -1880,7 +1871,7 @@ class BarSeqFitnessFrame:
                 self.save_as_pickle(overwrite=overwrite)
 
     def add_fitness_from_slopes(
-        self, initial=None, auto_save=True, overwrite=False, is_on_aws=False
+        self, initial=None, auto_save=True, overwrite=False, fit_files=None
     ):
         fit_frame = self.barcode_frame
         plasmid = self.plasmid
@@ -1897,7 +1888,8 @@ class BarSeqFitnessFrame:
         #         the first interpolating function is the mean estimate for the fitness as a function of ligand concentration
         #         the second interpolating function is the posterior std for the fitness as a function of ligand concentration
         spike_in_fitness_dict = fitness.fitness_calibration_dict(
-            plasmid=plasmid, barseq_directory=self.notebook_dir, is_on_aws=is_on_aws
+            plasmid=plasmid,
+            fit_files=fit_files,
         )
 
         k1 = list(spike_in_fitness_dict.keys())[0]
@@ -6049,16 +6041,12 @@ class BarSeqFitnessFrame:
         return axs
 
     def save_as_pickle(
-        self, notebook_dir=None, experiment=None, pickle_file=None, overwrite=False
+        self,
+        pickle_file=None,
+        overwrite=False,
     ):
-        if notebook_dir is None:
-            notebook_dir = self.notebook_dir
-        if experiment is None:
-            experiment = self.experiment
         if pickle_file is None:
-            pickle_file = experiment + "_BarSeqFitnessFrame.pkl"
-
-        os.chdir(notebook_dir)
+            pickle_file = self.experiment + "_BarSeqFitnessFrame.pkl"
 
         # If file already exists, default is to rename old version instead of overwriting it.
         file_exists = os.path.isfile(pickle_file)

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import os
 import glob
+import typing as t
 
 
 def check_all_diagnostics(fit):
@@ -156,7 +157,7 @@ def ref_fit_correction(lig_conc, plasmid, ligand=None, spike_in=None):
     return y
 
 
-def fitness_calibration_dict(plasmid="pVER", barseq_directory=None, is_on_aws=False):
+def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] = None):
     # Dictionary of dictionaries of 2-tuple of functions
     #     first key is antibiotic concentration
     #     second key is spike-in name
@@ -339,23 +340,9 @@ def fitness_calibration_dict(plasmid="pVER", barseq_directory=None, is_on_aws=Fa
 
     elif plasmid == "pRamR":
         zeo_list = [0, 200]
-        # Fitness interpolating functions are from data with Hamilton programming error (mixed up some of the Tet vs. non-Tet wells).
-        #     Based on sucessful results (quantitative comparison between BarSeq and cytometry dose-response curves), it doesn't matter.
-        #     Probably because the always-on controls here express the Zeo resistance at a high level so they have the same growth rate for all Zeo concentrations used.
-        return_directory = os.getcwd()
-        if not is_on_aws:
-            fitness_exp_id = "2023-01-27_three_inducers_OD-test-5-plates"
-            os.chdir(barseq_directory)
-            direct = os.getcwd()
-            while direct[-4:] != "RamR":
-                os.chdir("..")
-                direct = os.getcwd()
-            os.chdir(fitness_exp_id)
 
-        fit_files = glob.glob("fitness_vs_ligand_pRamR*.pkl")
         keys = [x[x.find("ON") : -4] for x in fit_files]
         values = [pickle.load(open(f, "rb")) for f in fit_files]
-        os.chdir(return_directory)
 
         fitness_dicts = [dict(zip(keys, values)), dict(zip(keys, values))]
 
