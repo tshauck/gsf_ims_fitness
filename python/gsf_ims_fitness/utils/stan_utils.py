@@ -12,12 +12,33 @@ import typing as t
 
 
 def check_all_diagnostics(fit):
+    """
+    Print diagnostics for a Stan fit object.
+
+    Parameters
+    ----------
+    fit : cmdstanpy.CmdStanMCMC
+        The fitted Stan model object.
+    """
     print(fit.diagnose())
 
 
 def file_to_list(file_name):
-    text_file = open(file_name, "r")
-    lines = text_file.readlines()
+    """
+    Read a file and return its contents as a list of lines.
+
+    Parameters
+    ----------
+    file_name : str
+        The path to the file to be read.
+
+    Returns
+    -------
+    list of str
+        The lines of the file.
+    """
+    with open(file_name, "r") as text_file:
+        lines = text_file.readlines()
     return lines
 
 
@@ -27,6 +48,25 @@ def compile_model(
     check_includes=True,
     incl_stan_save_file=None,
 ):
+    """
+    Compile a Stan model, optionally handling includes.
+
+    Parameters
+    ----------
+    filename : str
+        The name of the Stan file to compile.
+    file_in_repository_models : bool, optional
+        Whether the file is in the repository models directory, by default True.
+    check_includes : bool, optional
+        Whether to check for and include files specified with #include, by default True.
+    incl_stan_save_file : str, optional
+        The name of the file to save the included Stan code, by default None.
+
+    Returns
+    -------
+    cmdstanpy.CmdStanModel
+        The compiled Stan model.
+    """
     return_directory = os.getcwd()
     if file_in_repository_models:
         os.chdir(
@@ -70,6 +110,23 @@ def compile_model(
 
 
 def check_rhat_by_params(fit, rhat_cutoff, stan_parameters=None):
+    """
+    Check R-hat values for specified parameters in a Stan fit object.
+
+    Parameters
+    ----------
+    fit : cmdstanpy.CmdStanMCMC
+        The fitted Stan model object.
+    rhat_cutoff : float
+        The R-hat cutoff value to check against.
+    stan_parameters : list of str, optional
+        The list of parameter names to check, by default None.
+
+    Returns
+    -------
+    list of str
+        The list of parameter names with R-hat values above the cutoff.
+    """
     df = fit.summary()
     if stan_parameters is not None:
         key_params = np.array(df.index)
@@ -91,6 +148,21 @@ def check_rhat_by_params(fit, rhat_cutoff, stan_parameters=None):
 
 
 def rhat_from_dataframe(df, split_chains=True):
+    """
+    Calculate R-hat values from a DataFrame.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The DataFrame containing the MCMC samples.
+    split_chains : bool, optional
+        Whether to split chains for R-hat calculation, by default True.
+
+    Returns
+    -------
+    numpy.ndarray
+        The R-hat values for each parameter.
+    """
     df = df.copy()
     if split_chains and ("draw" in list(df.columns)):
         chains = np.unique(df.chain)
@@ -143,6 +215,25 @@ def rhat_from_dataframe(df, split_chains=True):
 
 
 def ref_fit_correction(lig_conc, plasmid, ligand=None, spike_in=None):
+    """
+    Apply reference fitness correction based on ligand concentration and plasmid type.
+
+    Parameters
+    ----------
+    lig_conc : float
+        The ligand concentration.
+    plasmid : str
+        The type of plasmid.
+    ligand : str, optional
+        The ligand name, by default None.
+    spike_in : str, optional
+        The spike-in name, by default None.
+
+    Returns
+    -------
+    float
+        The corrected fitness value.
+    """
     if plasmid == "pRamR":
         y = 1 - 0.25 * lig_conc / 500
     elif ((plasmid == "pVER") and (ligand == "ONPF")) or (
@@ -158,23 +249,24 @@ def ref_fit_correction(lig_conc, plasmid, ligand=None, spike_in=None):
 
 
 def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] = None):
-    # Dictionary of dictionaries of 2-tuple of functions
-    #     first key is antibiotic concentration
-    #     second key is spike-in name
-    #     each function has two arguments: the ligand and the ligand concentration
-    #         return from function is 2-tuple: (spike-in fitness, uncertainty of spike-in fitness)
-    # ***** units for fitness values are 10-fold per plate. *****
-    #         So, fitness=1 means that the cells grow 10-fold over the time for one plate repeate cycle
+    """
+    Create a dictionary of fitness calibration functions for different plasmids.
 
+    Parameters
+    ----------
+    plasmid : str, optional
+        The type of plasmid, by default "pVER".
+    fit_files : list of str, optional
+        List of file paths for fitness calibration data, by default None.
+
+    Returns
+    -------
+    dict
+        A dictionary of fitness calibration functions.
+    """
     spike_in_fitness_dict = {}
     if plasmid == "pVER":
         tet_list = [0, 1.25, 10, 20]
-        # Fitness for 0, 1.25 and 10 are from 2022-11-22_two-lig_two-sel_OD-test-5-plates,
-        # Fitness for 20 is from 2019 data, rescaled to match older zero-tet from 2022-11-22
-        # TODO: move fitness values for spike-ins to somewhere else (not hard coded)
-        # old: fitness_dicts = [{"AO-B": 0.9637, "AO-E": 0.9666}, {"AO-B": 0.9587125, "AO-E": 0.9597825},
-        # old:                  {"AO-B": 0.93045, "AO-E": 0.92115}, {"AO-B": 0.8972, "AO-E": 0.8757}]
-
         fitness_dicts = [
             {"AO-B": 0.9288, "AO-E": 0.9282},
             {"AO-B": 0.9199, "AO-E": 0.9244},
@@ -182,7 +274,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
             {"AO-B": 0.8972 * 0.9288 / 0.9637, "AO-E": 0.8757 * 0.9282 / 0.9666},
         ]
 
-        # Tet = 0, "AO-B":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.92379, 0.00168)
@@ -194,7 +285,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list = [{"AO-B": fit_function}]
 
-        # Tet = 1.25, "AO-B":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.91817, 0.00232)
@@ -206,7 +296,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list += [{"AO-B": fit_function}]
 
-        # Tet = 10, "AO-B":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.90297, 0.00262)
@@ -218,7 +307,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list += [{"AO-B": fit_function}]
 
-        # Tet = 20, "AO-B":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.8972 * 0.9288 / 0.9637, 0.005)
@@ -227,7 +315,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list += [{"AO-B": fit_function}]
 
-        # Tet = 0, "AO-E":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.92789, 0.00165)
@@ -239,7 +326,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list[0]["AO-E"] = fit_function
 
-        # Tet = 1.25, "AO-E":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.92518, 0.00225)
@@ -251,7 +337,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list[1]["AO-E"] = fit_function
 
-        # Tet = 10, "AO-E":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.89910, 0.00263)
@@ -263,7 +348,6 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list[2]["AO-E"] = fit_function
 
-        # Tet = 20, "AO-E":
         def fit_function(lig, conc):
             if (lig == "IPTG") or (lig == "none"):
                 return (0.8757 * 0.9282 / 0.9666, 0.005)
@@ -277,15 +361,8 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
     elif plasmid == "pCymR":
         tet_list = [0, 5]
-        # Fitness for 0, and 5 Tet are indistinguishable in plate reader data.
-        #     results are from 2023-11-17_Per-OH_OD-test-5-plates
-        # AO-09 looks like a decent always-on, but AO-10 looks like it is actaully an inverted sensor,
-        #     so use RS-20 instead, which is an always-on phenotype
-        # TODO: move fitness values for spike-ins to somewhere else (not hard coded)
 
-        # Tet = 0, "AO-09":
         def fit_function(lig, conc):
-            # fitness is quadratic in Per-OH concentration (and uncertainty is also approximately quadratic
             fitness_popt = [
                 0.96023440345,
                 -0.0006537943555499999,
@@ -307,94 +384,16 @@ def fitness_calibration_dict(plasmid="pVER", fit_files: t.Optional[t.List[str]] 
 
         dict_list = [{"AO-09": fit_function}]
 
-        # Tet = 5, "AO-09":
-        # No measureable difference between with and without Tet
-        dict_list += [{"AO-09": fit_function}]
-
-        # Tet = 0, "RS-20":
-        def fit_function(lig, conc):
-            # fitness is quadratic in Per-OH concentration (and uncertainty is also approximately quadratic
-            fitness_popt = [0.96257526335, -0.00073499716683, -4.774547993411e-07]
-            uncertainty_popt = [4.79398178e-03, 1.67402328e-05, 2.73392737e-07]
-            if lig == "Per-OH":
-                fit_ret = (
-                    fitness_popt[0] + fitness_popt[1] * conc + fitness_popt[2] * conc**2
-                )
-                fit_ret_err = (
-                    uncertainty_popt[0]
-                    + uncertainty_popt[1] * conc
-                    + uncertainty_popt[2] * conc**2
-                )
-                return (fit_ret, fit_ret_err)
-            else:
-                return (fitness_popt[0], uncertainty_popt[0])
-
-        dict_list[0]["RS-20"] = fit_function
-
-        # Tet = 5, "RS-20":
-        # No measureable difference between with and without Tet
-        dict_list[1]["RS-20"] = fit_function
-
-        for t, d in zip(tet_list, dict_list):
-            spike_in_fitness_dict[t] = d
-
-    elif plasmid == "pRamR":
-        zeo_list = [0, 200]
-
-        keys = [x[x.find("ON") : -4] for x in fit_files]
-        values = [pickle.load(open(f, "rb")) for f in fit_files]
-
-        fitness_dicts = [dict(zip(keys, values)), dict(zip(keys, values))]
-
-        for t, d in zip(zeo_list, fitness_dicts):
-            spike_in_fitness_dict[t] = d
-
-    elif plasmid == "Align-TF":
-        """
-        tet_list = [0, 0.5, 1, 5]
-        # Fitness values are from 2024-08-27_Align-TF_GBA_1_OD-test,
-        # TODO: move fitness values for spike-ins to somewhere else (not hard coded)
-
-        # TMP = 0, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.91051, 0.013531)
-        dict_list = [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 0.5, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.89862, 0.013568)
-        dict_list += [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 1, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.89142, 0.011612)
-        dict_list += [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 5, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.70381, 0.012593)
-        dict_list += [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 0, "pLacI-norm-01":
-        def fit_function(lig, conc):
-            return (0.94828, 0.014503)
-        dict_list[0]["pLacI-norm-01"] = fit_function
-
-        # TMP = 0.5, "pLacI-norm-01":
-        def fit_function(lig, conc):
-            return (0.90892, 0.015545)
-        dict_list[1]["pLacI-norm-01"] = fit_function
-
-        # TMP = 1, "pLacI-norm-01":
         def fit_function(lig, conc):
             return (0.88796, 0.021021)
+
         dict_list[2]["pLacI-norm-01"] = fit_function
 
         # TMP = 5, "pLacI-norm-01":
         def fit_function(lig, conc):
             return (0.64319, 0.020423)
+
         dict_list[3]["pLacI-norm-01"] = fit_function
-        """
 
         tmp_list = [0, 0.3, 1, 3]
         # Fitness values are from 2024-11-22_Align-TF_GBA_1_OD-test,
@@ -471,6 +470,45 @@ def get_stan_data(
     ramr_fitness_correction=None,
     ramr_fitness_correction_params=None,
 ):
+    """
+    Prepare data for Stan model fitting.
+
+    Parameters
+    ----------
+    st_row : pandas.Series
+        A row from the summary table containing fitness estimates and errors.
+    plot_df : pandas.DataFrame
+        DataFrame containing plot data with columns for ligand, antibiotic concentration, and sample ID.
+    antibiotic_conc_list : list
+        List of antibiotic concentrations.
+    lig_list : list
+        List of ligands.
+    fit_fitness_difference_params : numpy.ndarray
+        Array of fitness difference parameters.
+    old_style_columns : bool, optional
+        Flag to indicate if old style columns are used, by default False.
+    initial : str, optional
+        Initial for the fitness estimate columns, by default "b".
+    plasmid : str, optional
+        Plasmid type, by default "pVER".
+    is_gp_model : bool, optional
+        Flag to indicate if the model is a Gaussian Process model, by default False.
+    min_err : float, optional
+        Minimum error value, by default 0.05.
+    ref_samples : list, optional
+        List of reference samples, by default None.
+    apply_ramr_correction : bool, optional
+        Flag to apply RamR correction, by default True.
+    ramr_fitness_correction : model, optional
+        RamR fitness correction model, by default None.
+    ramr_fitness_correction_params : list, optional
+        Parameters for RamR fitness correction model, by default None.
+
+    Returns
+    -------
+    dict
+        Dictionary containing data prepared for Stan model fitting.
+    """
     log_g_min, log_g_max, log_g_prior_scale, _ = log_g_limits(plasmid=plasmid)
 
     antibiotic_conc_list = np.array(antibiotic_conc_list)
@@ -775,6 +813,26 @@ def get_stan_data(
 
 
 def get_spike_in_name_from_initial(plasmid, initial):
+    """
+    Get the spike-in name based on the plasmid and initial provided.
+
+    Parameters
+    ----------
+    plasmid : str
+        The name of the plasmid. Possible values are "pVER", "pRamR", "pCymR", and "Align-TF".
+    initial : str
+        The initial string to determine the specific spike-in name.
+
+    Returns
+    -------
+    str
+        The corresponding spike-in name.
+
+    Raises
+    ------
+    ValueError
+        If the initial string is not recognized for the given plasmid.
+    """
     if plasmid == "pVER":
         if initial[-1] == "b":
             spike_in = "AO-B"
@@ -808,6 +866,59 @@ def get_spike_in_name_from_initial(plasmid, initial):
 
 
 def init_stan_GP_fit(fit_fitness_difference_params, single_tet, plasmid="pVER"):
+    """
+    Initialize parameters for Stan Gaussian Process (GP) fit.
+
+    Parameters
+    ----------
+    fit_fitness_difference_params : list of list of float
+        A nested list containing fitness difference parameters. The structure
+        depends on the `plasmid` and `single_tet` parameters.
+    single_tet : bool
+        A flag indicating whether a single tetracycline concentration is used.
+    plasmid : str, optional
+        The type of plasmid, by default "pVER". Possible values are "pVER", "pRamR", and "pCymR".
+
+    Returns
+    -------
+    dict
+        A dictionary containing the initialized parameters for the Stan GP fit.
+        The keys and values in the dictionary depend on the `plasmid` and `single_tet` parameters.
+
+    Notes
+    -----
+    - For `plasmid` "pVER" and `single_tet` True, the dictionary contains:
+        - sigma
+        - low_fitness
+        - mid_g
+        - fitness_n
+        - rho
+        - alpha
+    - For `plasmid` "pVER" and `single_tet` False, the dictionary contains:
+        - sigma
+        - rho
+        - alpha
+        - low_fitness_low_tet
+        - mid_g_low_tet
+        - fitness_n_low_tet
+        - low_fitness_high_tet
+        - mid_g_high_tet
+        - fitness_n_high_tet
+    - For `plasmid` "pRamR", the dictionary contains:
+        - sigma
+        - rho
+        - alpha
+        - high_fitness
+        - mid_g
+        - fitness_n
+    - For `plasmid` "pCymR", the dictionary contains:
+        - sigma
+        - rho
+        - alpha
+        - low_fitness
+        - mid_g
+        - fitness_n
+    """
     sig = np.random.uniform(1, 3)
     rho = np.random.uniform(0.9, 1.1)
     alpha = np.random.uniform(0.009, 0.011)
@@ -859,6 +970,34 @@ def init_stan_GP_fit(fit_fitness_difference_params, single_tet, plasmid="pVER"):
 
 
 def init_stan_fit_single_ligand(stan_data, fit_fitness_difference_params):
+    """
+    Initialize the parameters for fitting a single ligand using Stan.
+
+    Parameters
+    ----------
+    stan_data : dict
+        A dictionary containing the data for Stan. Expected keys are:
+        - "x": array-like, the x data points.
+        - "y": array-like, the y data points.
+    fit_fitness_difference_params : list of lists
+        A list containing parameters for fitness difference fitting. Expected structure:
+        - fit_fitness_difference_params[0][0]: float, low fitness value.
+        - fit_fitness_difference_params[0][1]: float, mid g value.
+        - fit_fitness_difference_params[0][2]: float, fitness n value.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the initialized parameters:
+        - log_g0: float, log level of the mean of the first two y data points.
+        - log_ginf: float, log level of the mean of the last two y data points.
+        - log_ec50: float, log10 of the EC50 value.
+        - sensor_n: float, sensor n value.
+        - sigma: float, sigma value.
+        - low_fitness: float, low fitness value.
+        - mid_g: float, mid g value.
+        - fitness_n: float, fitness n value.
+    """
     x_data = stan_data["x"]
     y_data = stan_data["y"]
     log_g0 = log_level(np.mean(y_data[:2]))
@@ -889,6 +1028,45 @@ def init_stan_fit_single_ligand(stan_data, fit_fitness_difference_params):
 
 
 def init_stan_fit_two_lig_two_tet(stan_data, fit_fitness_difference_params):
+    """
+    Initialize parameters for Stan model fitting with two ligands and two tetracyclines.
+
+    Parameters
+    ----------
+    stan_data : dict
+        Dictionary containing the Stan data. Expected keys are:
+        - "x_1": array-like, data for x_1
+        - "y_0_low_tet": array-like, data for y_0 at low tetracycline
+        - "y_1_high_tet": array-like, data for y_1 at high tetracycline
+        - "y_2_high_tet": array-like, data for y_2 at high tetracycline
+    fit_fitness_difference_params : list of list of float
+        List containing fitness difference parameters. Each sublist should contain three float values:
+        - [0][0]: low fitness at low tetracycline
+        - [0][1]: mid g at low tetracycline
+        - [0][2]: fitness n at low tetracycline
+        - [1][0]: low fitness at high tetracycline
+        - [1][1]: mid g at high tetracycline
+        - [1][2]: fitness n at high tetracycline
+
+    Returns
+    -------
+    dict
+        Dictionary containing initialized parameters for the Stan model:
+        - log_g0: float, log level of y_0 at low tetracycline
+        - log_ginf_1: float, log level of the mean of the last two y_1 at high tetracycline
+        - log_ginf_2: float, log level of the mean of the last two y_2 at high tetracycline
+        - log_ec50_1: float, log EC50 for the first ligand
+        - log_ec50_2: float, log EC50 for the second ligand
+        - sensor_n_1: float, sensor n for the first ligand
+        - sensor_n_2: float, sensor n for the second ligand
+        - sigma: float, sigma value
+        - low_fitness_low_tet: float, low fitness at low tetracycline
+        - mid_g_low_tet: float, mid g at low tetracycline
+        - fitness_n_low_tet: float, fitness n at low tetracycline
+        - low_fitness_high_tet: float, low fitness at high tetracycline
+        - mid_g_high_tet: float, mid g at high tetracycline
+        - fitness_n_high_tet: float, fitness n at high tetracycline
+    """
     min_ic = np.log10(min(stan_data["x_1"]))
     max_ic = np.log10(max(stan_data["x_1"]))
     log_ec50_1 = np.random.uniform(min_ic, max_ic)
@@ -921,6 +1099,23 @@ def init_stan_fit_two_lig_two_tet(stan_data, fit_fitness_difference_params):
 def init_stan_fit_three_ligand(
     stan_data, fit_fitness_difference_params, plasmid="pRamR"
 ):
+    """
+    Initialize the parameters for fitting a Stan model with three ligands.
+
+    Parameters
+    ----------
+    stan_data : dict
+        A dictionary containing the Stan data with keys "x_1", "y_0", "y_1", "y_2", and "y_3".
+    fit_fitness_difference_params : list
+        A list containing fitness difference parameters.
+    plasmid : str, optional
+        The plasmid type, by default "pRamR".
+
+    Returns
+    -------
+    dict
+        A dictionary containing the initialized parameters for the Stan model.
+    """
     min_ic = np.log10(min(stan_data["x_1"]))
     max_ic = np.log10(max(stan_data["x_1"]))
     log_ec50_1 = np.random.uniform(min_ic, max_ic)
@@ -957,6 +1152,26 @@ def init_stan_fit_three_ligand(
 
 
 def init_stan_fit_single_point(stan_data):
+    """
+    Initialize a single point for Stan fit.
+
+    Parameters
+    ----------
+    stan_data : dict
+        A dictionary containing the following keys:
+        - "low_fitness_mu": Mean value for low fitness.
+        - "mid_g_mu": Mean value for mid g.
+        - "fitness_n_mu": Mean value for fitness n.
+
+    Returns
+    -------
+    dict
+        A dictionary with the initialized values:
+        - "sigma": A random value uniformly drawn between 1 and 3.
+        - "low_fitness": The value of "low_fitness_mu" from stan_data.
+        - "mid_g": The value of "mid_g_mu" from stan_data.
+        - "fitness_n": The value of "fitness_n_mu" from stan_data.
+    """
     sig = np.random.uniform(1, 3)
 
     return dict(
@@ -968,6 +1183,27 @@ def init_stan_fit_single_point(stan_data):
 
 
 def log_level(fitness_difference, plasmid="pVER"):
+    """
+    Calculate the log level based on the fitness difference and plasmid type.
+
+    Parameters
+    ----------
+    fitness_difference : float
+        The difference in fitness to be used in the calculation.
+    plasmid : str, optional
+        The type of plasmid, by default "pVER".
+        Supported plasmids are "pVER", "pRamR", and "pCymR".
+
+    Returns
+    -------
+    float
+        The calculated log level.
+
+    Raises
+    ------
+    ValueError
+        If an unsupported plasmid type is provided.
+    """
     if plasmid == "pVER":
         log_g = 1.439 * fitness_difference + 3.32
         log_g = log_g * np.random.uniform(0.9, 1.1)
