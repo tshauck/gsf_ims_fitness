@@ -7,8 +7,8 @@ Created on Fri Nov 22 09:29:34 2019
 
 import logging
 import pathlib
-import glob  # filenames and pathnames utility
-import os  # operating sytem utility
+import glob
+import os
 import sys
 import warnings
 import datetime
@@ -4348,7 +4348,7 @@ class BarSeqFitnessFrame:
                         fitness_n,
                         *argv,
                     ):
-                        return double_hill_funct(
+                        return hill_function_utility.double_hill_funct(
                             x,
                             10**log_g_min,
                             10**log_g_max,
@@ -4374,7 +4374,7 @@ class BarSeqFitnessFrame:
                         fitness_n,
                         *argv,
                     ):
-                        return double_hill_funct(
+                        return hill_function_utility.double_hill_funct(
                             x,
                             10**log_g_min,
                             10**log_g_max,
@@ -4388,7 +4388,7 @@ class BarSeqFitnessFrame:
                 else:
 
                     def fit_funct(x, g_min, g_max, x_50, nx):
-                        return double_hill_funct(
+                        return hill_function_utility.double_hill_funct(
                             x,
                             g_min,
                             g_max,
@@ -5617,7 +5617,6 @@ class BarSeqFitnessFrame:
                         x_fit_list_2 = x_fit_list[dev_list < outlier_cutoff]
                         y_fit_list_2 = y_fit_list[dev_list < outlier_cutoff]
                         y_err_list_2 = y_err_list[dev_list < outlier_cutoff]
-                        identifier_list_2 = identifier_list[dev_list < outlier_cutoff]
                         drop_list = identifier_list[dev_list >= outlier_cutoff]
                         dropped_x_list = x_fit_list[dev_list >= outlier_cutoff]
                         dropped_y_list = y_fit_list[dev_list >= outlier_cutoff]
