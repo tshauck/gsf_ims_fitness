@@ -36,8 +36,6 @@ from .utils import plot_utils
 from .utils import align_tf_utils
 from .utils import hill_function_utils
 
-sns.set()
-
 
 sns.set_style("white")
 sns.set_style(
@@ -68,6 +66,24 @@ class BarSeqFitnessFrame:
         single_barcode=False,
         merge_dist_cutoff=2,
     ):
+        """
+        Initializes a BarSeqFitnessFrame object
+
+        Parameters:
+        - `data_directory`: Path to the directory containing the data files
+        - `growth_plate_layout_file`: Path to the growth plate layout file
+        - `experiment`: Name of the experiment
+        - `barcode_file`: Path to the barcode file
+        - `inducer_conc_lists`: List of inducer concentrations (default: None)
+        - `min_read_count`: Minimum read count required (default: 500)
+        - `ref_samples`: List of reference samples (default: None)
+        - `plasmid`: Type of plasmid used (default: "pVER")
+        - `single_barcode`: Whether to merge barcodes based on forward and reverse reads (default: False)
+        - `merge_dist_cutoff`: Cutoff for merging barcodes based on distance (default: 2)
+
+        Returns:
+        - A BarSeqFitnessFrame object
+        """
         self.data_directory = data_directory
         self.growth_plate_layout_file = growth_plate_layout_file
         self.experiment = experiment
@@ -331,6 +347,15 @@ class BarSeqFitnessFrame:
         self.set_ref_samples(ref_samples)
 
     def set_ref_samples(self, ref_samples):
+        """
+        ### Sets the reference samples
+
+        Parameters:
+        - `ref_samples`: List of reference samples (default: None)
+
+        Returns:
+        - None
+        """
         if ref_samples is None:
             ref_samples = self.samples_without_tet
 
@@ -344,6 +369,19 @@ class BarSeqFitnessFrame:
         auto_save=True,
         overwrite=False,
     ):
+        """
+        ### Trims and sums barcodes based on read counts
+
+        Parameters:
+        - `cutoff`: Cutoff for trimming barcodes (default: None)
+        - `export_trimmed_file`: Whether to export the trimmed file (default: False)
+        - `trimmed_export_file`: Path to the trimmed export file (default: None)
+        - `auto_save`: Whether to auto-save the changes (default: True)
+        - `overwrite`: Whether to overwrite existing files (default: False)
+
+        Returns:
+        - None
+        """
         barcode_frame = self.barcode_frame
 
         if cutoff is not None:
@@ -399,6 +437,18 @@ class BarSeqFitnessFrame:
         auto_save=True,
         overwrite=False,
     ):
+        """
+        ### Labels reference sequences in the barcode frame
+
+        Parameters:
+        - `ref_seq_file_path`: Path to the reference sequence file
+        - `show_output`: Whether to show the output (default: True)
+        - `auto_save`: Whether to auto-save the changes (default: True)
+        - `overwrite`: Whether to overwrite existing files (default: False)
+
+        Returns:
+        - None
+        """
         barcode_frame = self.barcode_frame
         ref_seq_frame = pd.read_csv(ref_seq_file_path, skipinitialspace=True)
 
@@ -478,6 +528,9 @@ class BarSeqFitnessFrame:
             self.save_as_pickle(overwrite=overwrite)
 
     def mark_chimera_parents(self):
+        """
+        ### Marks the parents of potential chimera barcodes
+        """
         barcode_frame = self.barcode_frame
 
         new_columns_list = ["forward_parent", "reverse_parent", "parent_geo_mean_p2"]
@@ -505,6 +558,17 @@ class BarSeqFitnessFrame:
         self.barcode_frame = barcode_frame
 
     def flag_possible_chimeras(self, use_faster_search=True, faster_search_ratio=10):
+        """
+        ### Flags potential chimera barcodes
+
+        Parameters:
+        - `use_faster_search`: Whether to use a faster search algorithm (default: True)
+        - `faster_search_ratio`: Ratio for faster search (default: 10)
+
+        Returns:
+        - None
+        """
+
         barcode_frame = self.barcode_frame
 
         if "possibleChimera" not in barcode_frame.columns:
@@ -557,6 +621,17 @@ class BarSeqFitnessFrame:
         self.barcode_frame = barcode_frame
 
     def mark_actual_chimeras(self, chimera_cut_line, auto_save=True, overwrite=False):
+        """
+        ### Marks actual chimera barcodes based on a cutoff
+
+        Parameters:
+        - `chimera_cut_line`: Function to determine the cutoff
+        - `auto_save`: Whether to auto-save the changes (default: True)
+        - `overwrite`: Whether to overwrite existing files (default: False)
+
+        Returns:
+        - None
+        """
         barcode_frame = self.barcode_frame
 
         barcode_frame["isChimera"] = False
@@ -594,6 +669,33 @@ class BarSeqFitnessFrame:
         dilution_factor=10,
         show_progress=False,
     ):
+        """
+        ### Runs a Stan model to determine the slope of log(count ratio) for barcodes
+
+        Parameters:
+        - `index`: Index of the barcode to run the model for (default: None)
+        - `spike_in_name`: Name of the spike-in (default: None)
+        - `iterations`: Number of iterations for the Stan model (default: 1000)
+        - `iter_warmup`: Number of warmup iterations (default: None)
+        - `iter_sampling`: Number of sampling iterations (default: None)
+        - `chains`: Number of chains for the Stan model (default: 4)
+        - `adapt_delta`: Adapt delta for the Stan model (default: 0.9)
+        - `tau_default`: Default tau for the Stan model (default: 0.01)
+        - `tau_de_weight`: Tau de-weight for the Stan model (default: 10)
+        - `ref_tau_factor`: Reference tau factor for the Stan model (default: 1)
+        - `return_fits`: Whether to return the fits (default: True)
+        - `use_all_samples_model`: Whether to use the all-samples model (default: True)
+        - `slope_ref_prior_std`: Standard deviation for the slope reference prior (default: 0.1)
+        - `auto_save`: Whether to auto-save the changes (default: True)
+        - `overwrite`: Whether to overwrite existing files (default: False)
+        - `bi_linear_alpha`: Alpha for the bi-linear model (default: np.log(5))
+        - `early_slope`: Whether to use the early slope (default: False)
+        - `dilution_factor`: Dilution factor for the model (default: 10)
+        - `show_progress`: Whether to show progress (default: False)
+
+        Returns:
+        - A dictionary with the fit results (if `index` is not None)
+        """
         if iter_warmup is None:
             iter_warmup = int(iterations / 2)
         if iter_sampling is None:
@@ -709,6 +811,9 @@ class BarSeqFitnessFrame:
             return single_ret
 
     def display_viewable_plate_layouts(self):
+        """
+        ### Displays the viewable plate layouts
+        """
         sample_plate_map = self.sample_plate_map
         col_contents = []
         antibiotic = self.antibiotic
@@ -2111,6 +2216,44 @@ class BarSeqFitnessFrame:
         rhat_cutoff=1.05,
         log_x_max=None,
     ):
+        """
+        Parameters
+        ----------
+        adapt_delta : float, optional
+            Adaptation parameter for Stan (default: 0.9).
+        iterations : int, optional
+            Total number of iterations for Stan (default: 1000).
+        iter_warmup : int, optional
+            Number of warmup iterations for Stan (default: None, which sets it to half of iterations).
+        iter_sampling : int, optional
+            Number of sampling iterations for Stan (default: None, which sets it to half of iterations).
+        chains : int, optional
+            Number of chains for Stan (default: 4).
+        stan_output_dir : str, optional
+            Directory for Stan output (default: None).
+        show_progress : bool, optional
+            Whether to show progress for Stan (default: False).
+        auto_save : bool, optional
+            Whether to automatically save the results (default: True).
+        overwrite : bool, optional
+            Whether to overwrite existing results (default: False).
+        refit_indexes : list of int, optional
+            List of indexes to refit (default: None, which fits all indexes).
+        return_fit : bool, optional
+            Whether to return the Stan fit object (default: False).
+        initial : list of float, optional
+            Initial values for the Stan fit (default: None, which uses default initial values).
+        re_stan_on_rhat : bool, optional
+            Whether to rerun Stan if R-hat is above the cutoff (default: True).
+        rhat_cutoff : float, optional
+            Cutoff for R-hat (default: 1.05).
+        log_x_max : float, optional
+            Maximum value for log(x) (default: None).
+
+        Returns
+        -------
+        None
+        """
         cmdstanpy_logger = logging.getLogger("cmdstanpy")
         cmdstanpy_logger.disabled = True
 
@@ -2542,6 +2685,40 @@ class BarSeqFitnessFrame:
         re_stan_on_rhat=True,
         rhat_cutoff=1.05,
     ):
+        """
+        Parameters
+        ----------
+        adapt_delta : float, optional
+            Adaptation parameter for Stan (default: 0.9).
+        iter_warmup : int, optional
+            Number of warmup iterations for Stan (default: 500).
+        iter_sampling : int, optional
+            Number of sampling iterations for Stan (default: 500).
+        chains : int, optional
+            Number of chains for Stan (default: 4).
+        stan_output_dir : str, optional
+            Directory for Stan output (default: None).
+        show_progress : bool, optional
+            Whether to show progress for Stan (default: False).
+        auto_save : bool, optional
+            Whether to automatically save the results (default: True).
+        overwrite : bool, optional
+            Whether to overwrite existing results (default: False).
+        refit_indexes : list of int, optional
+            List of indexes to refit (default: None, which fits all indexes).
+        return_fit : bool, optional
+            Whether to return the Stan fit object (default: False).
+        initial_min_err_list : list of tuple, optional
+            List of tuples containing initial values, minimum error, and antibiotic concentration (default: None).
+        re_stan_on_rhat : bool, optional
+            Whether to rerun Stan if R-hat is above the cutoff (default: True).
+        rhat_cutoff : float, optional
+            Cutoff for R-hat (default: 1.05).
+
+        Returns
+        -------
+        None
+        """
         plasmid = self.plasmid
         if plasmid != "Align-TF":
             raise NotImplementedError(
@@ -2896,6 +3073,47 @@ class BarSeqFitnessFrame:
         re_stan_on_rhat=True,
         rhat_cutoff=1.05,
     ):
+        """
+        Fit Gaussian Process (GP) curves to fitness data using Stan.
+
+        Parameters
+        ----------
+        stan_GP_model : str, optional
+            Path to the Stan model file (default: "gp-hill-nomean-constrained.stan").
+        adapt_delta : float, optional
+            Adaptation parameter for Stan's NUTS sampler (default: 0.9).
+        iterations : int, optional
+            Total number of iterations for Stan's NUTS sampler (default: 1000).
+        iter_warmup : int, optional
+            Number of warm-up iterations for Stan's NUTS sampler (default: iterations/2).
+        iter_sampling : int, optional
+            Number of sampling iterations for Stan's NUTS sampler (default: iterations/2).
+        show_progress : bool, optional
+            Whether to show progress bar for Stan's NUTS sampler (default: False).
+        chains : int, optional
+            Number of chains for Stan's NUTS sampler (default: 4).
+        stan_output_dir : str, optional
+            Directory for Stan output files (default: None).
+        auto_save : bool, optional
+            Whether to automatically save the updated barcode frame (default: True).
+        overwrite : bool, optional
+            Whether to overwrite existing files (default: False).
+        refit_indexes : list of int, optional
+            List of indices to refit (default: None, which refits all indices).
+        return_fit : bool, optional
+            Whether to return the Stan fit object (default: False).
+        initial : dict, optional
+            Initial values for Stan's NUTS sampler (default: None).
+        re_stan_on_rhat : bool, optional
+            Whether to re-run Stan if R-hat is above the cutoff (default: True).
+        rhat_cutoff : float, optional
+            R-hat cutoff for re-running Stan (default: 1.05).
+
+        Returns
+        -------
+        dict or StanFit object
+            Dictionary of fitted parameters or StanFit object if return_fit is True.
+        """
         cmdstanpy_logger = logging.getLogger("cmdstanpy")
         cmdstanpy_logger.disabled = True
 
@@ -3380,6 +3598,24 @@ class BarSeqFitnessFrame:
     def merge_barcodes(
         self, small_bc_index_list, big_bc_index, auto_save=True, overwrite=False
     ):
+        """
+        Merge small barcode indices into a big barcode index.
+
+        Parameters
+        ----------
+        small_bc_index_list : list of int
+            List of small barcode indices to merge.
+        big_bc_index : int
+            Big barcode index to merge into.
+        auto_save : bool, optional
+            Whether to automatically save the updated barcode frame (default: True).
+        overwrite : bool, optional
+            Whether to overwrite existing files (default: False).
+
+        Returns
+        -------
+        None
+        """
         # merge each row/barcode in small_bc_index_list into row with big_bc_index (add read counts)
         # remove small rows/barcodes from dataframe
 
@@ -3424,6 +3660,26 @@ class BarSeqFitnessFrame:
         pdf_file=None,
         quantile_for_qc_ratio=0.99,
     ):
+        """
+        Plot a histogram of barcode counts.
+
+        Parameters
+        ----------
+        hist_bin_max : float, optional
+            Maximum bin value for the histogram (default: 99th quantile of barcode counts).
+        num_bins : int, optional
+            Number of bins for the histogram (default: 50).
+        save_plots : bool, optional
+            Whether to save the plot to a PDF file (default: False).
+        pdf_file : str, optional
+            Path to the PDF file (default: "barcode histogram plot.pdf").
+        quantile_for_qc_ratio : float, optional
+            Quantile for calculating the QC ratio (default: 0.99).
+
+        Returns
+        -------
+        None
+        """
         barcode_frame = self.barcode_frame
 
         # Turn interactive plotting on or off depending on show_plots
@@ -3479,6 +3735,22 @@ class BarSeqFitnessFrame:
             pdf.close()
 
     def plot_read_counts(self, save_plots=False, pdf_file=None, vmin=0):
+        """
+        Plot a heatmap of read counts across the plate.
+
+        Parameters
+        ----------
+        save_plots : bool, optional
+            Whether to save the plot to a PDF file (default: False).
+        pdf_file : str, optional
+            Path to the PDF file (default: "barcode read count plots.pdf").
+        vmin : float, optional
+            Minimum value for the heatmap color scale (default: 0).
+
+        Returns
+        -------
+        None
+        """
         barcode_frame = self.barcode_frame
 
         # Turn interactive plotting on or off depending on show_plots
@@ -3551,6 +3823,34 @@ class BarSeqFitnessFrame:
         plot_fraction=True,
         marker_size=70,
     ):
+        """
+        Plot read fractions or counts across all samples for the top barcodes.
+
+        Parameters
+        ----------
+        save_plots : bool, optional
+            Whether to save the plots to a PDF file (default: False).
+        num_to_plot : int, optional
+            Number of top barcodes to plot (default: 5).
+        plot_range : tuple of int, optional
+            Range of barcode indices to plot (default: None, which plots the top barcodes).
+        plot_size : int, optional
+            Size of the plot (default: 16).
+        plot_fraction : bool, optional
+            Whether to plot read fractions (default: True) or counts (default: False).
+        marker_size : int, optional
+            Size of the markers in the plot (default: 70).
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method plots read fractions or counts across all samples for the top barcodes.
+        The plot can be customized by specifying the number of barcodes to plot, the plot size, and whether to plot fractions or counts.
+        The plot can be saved to a PDF file.
+        """
         # Turn interactive plotting on or off depending on show_plots
         plt.ion()
 
@@ -3590,7 +3890,7 @@ class BarSeqFitnessFrame:
                     if len(df) > 0:
                         y.append(row[plot_param + w])
                         x.append(i + 1)
-                        c.append(plot_colors()[col - 1])
+                        c.append(plot_utils.plot_colors()[col - 1])
                     if (row[plot_param + w]) > 0:
                         y_for_scale.append(row[plot_param + w])
 
@@ -3633,6 +3933,32 @@ class BarSeqFitnessFrame:
         includeChimeras=False,
         reverse_well_order=False,
     ):
+        """
+        Plot the standard deviation of barcode read fractions across wells in time point 1.
+
+        Parameters
+        ----------
+        save_plots : bool, optional
+            Whether to save the plots to a PDF file (default: False).
+        count_cutoff : int, optional
+            Minimum count threshold for barcodes to be included in the plot (default: 500).
+        experiment : str, optional
+            Experiment name to be used in the plot legend (default: None, which uses the experiment name from the object).
+        includeChimeras : bool, optional
+            Whether to include chimeras in the plot (default: False).
+        reverse_well_order : bool, optional
+            Whether to reverse the order of the wells in the plot (default: False).
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method plots the standard deviation of barcode read fractions across wells in time point 1.
+        It also plots the mean read fraction and estimates the error using Poisson statistics.
+        The plot can be saved to a PDF file.
+        """
         if experiment is None:
             experiment = self.experiment
 
@@ -3877,6 +4203,51 @@ class BarSeqFitnessFrame:
         plot_stan_data=[False, False],
         plot_w_ramr_correction=[True, False],
     ):
+        """
+        Plot fitness curves for barcodes.
+
+        Parameters
+        ----------
+        save_plots : bool, optional
+            Whether to save the plots to a PDF file (default: False).
+        plot_range : tuple of int, optional
+            Range of barcode indices to plot (default: None, which plots all barcodes).
+        include_ref_seqs : bool, optional
+            Whether to include reference sequences in the plot (default: False).
+        includeChimeras : bool, optional
+            Whether to include chimeras in the plot (default: False).
+        ylim : tuple of float, optional
+            Range of y-values to plot (default: None, which automatically sets the range).
+        plot_size : list of int, optional
+            Size of the plot (default: [6, 4]).
+        fontsize : int, optional
+            Font size for the plot labels (default: 13).
+        ax_label_size : int, optional
+            Font size for the axis labels (default: 14).
+        show_bc_str : bool, optional
+            Whether to show the barcode string in the plot (default: False).
+        real_fitness_units : bool, optional
+            Whether to use real fitness units (default: False).
+        plot_initials : list of str, optional
+            List of initials for the plots (default: None, which uses the default initials).
+        plot_slope_not_fitness : bool, optional
+            Whether to plot the slope instead of fitness (default: False).
+        plot_stan_data : list of bool, optional
+            List of booleans indicating whether to plot Stan data for each initial (default: [False, False]).
+        plot_w_ramr_correction : list of bool, optional
+            List of booleans indicating whether to apply RamR correction for each initial (default: [True, False]).
+
+        Returns
+        -------
+        fig, axs_grid : matplotlib.figure.Figure, numpy.ndarray of matplotlib.axes.Axes
+            The plot figure and axes objects.
+
+        Notes
+        -----
+        This method plots fitness curves for barcodes, with options for customizing the plot.
+        It can plot fitness curves for multiple initials, with or without Stan data and RamR correction.
+        The plot can be saved to a PDF file.
+        """
         if plot_initials is None:
             if self.plasmid == "pVER":
                 plot_initials = ["b", "e"]
@@ -4117,6 +4488,31 @@ class BarSeqFitnessFrame:
         return fig, axs_grid
 
     def get_fitness_columns_setup(self, plot_initials):
+        """
+        Set up the fitness column headings and plot parameters.
+
+        Parameters
+        ----------
+        plot_initials : list of str
+            List of initials for the plots.
+
+        Returns
+        -------
+        old_style_plots : bool
+            Whether to use the old style column headings.
+        linthresh : float
+            The linthresh value for the plot.
+        fit_plot_colors : list of str
+            List of colors for the fitness plots.
+        plot_df : pandas.DataFrame, optional
+            DataFrame for the plot, returned if using new style column headings.
+
+        Notes
+        -----
+        This method determines whether to use the old or new style column headings for the fitness plots.
+        It returns the necessary parameters for the plots, including the linthresh value and colors.
+        If using the new style column headings, it also returns a DataFrame for the plot.
+        """
         barcode_frame = self.barcode_frame
 
         # old_style_plots indicates whether to use the old style column headings (i.e., f"fitness_{high_tet}_estimate_{initial}")
@@ -4164,6 +4560,32 @@ class BarSeqFitnessFrame:
         box_size=6,
         show_mut_codes=True,
     ):
+        """
+        Plot the dose-response curve for a given barcode.
+
+        Parameters
+        ----------
+        plot_index : int
+            Index of the barcode to plot.
+        show_GP : bool, optional
+            Whether to show the GP (Gaussian Process) fit (default: True).
+        log_g_scale : bool, optional
+            Whether to use a log scale for the y-axis (default: True).
+        box_size : int, optional
+            Size of the plot box (default: 6).
+        show_mut_codes : bool, optional
+            Whether to show mutation codes (default: True).
+
+        Returns
+        -------
+        fig, axg : matplotlib.figure.Figure, matplotlib.axes.Axes
+            The plot figure and axes objects.
+
+        Notes
+        -----
+        This method plots the dose-response curve for a given barcode, including the GP fit and Hill function fit.
+        The plot shows the output (MEF) as a function of ligand concentration.
+        """
         plot_row = self.barcode_frame.loc[plot_index]
 
         ligand_list = self.ligand_list
@@ -4226,7 +4648,7 @@ class BarSeqFitnessFrame:
             hill_params = [10 ** plot_row[p] for p in params_list[:-1]] + [
                 plot_row[params_list[-1]]
             ]
-            y_fit = hill_funct(x_fit, *hill_params)
+            y_fit = hill_function_utils.hill_funct(x_fit, *hill_params)
             axg.plot(x_fit, y_fit, c=color, zorder=1000)
 
         axg.set_xscale("symlog", linthresh=linthresh)
@@ -4857,7 +5279,7 @@ class BarSeqFitnessFrame:
                         hill_params = [10 ** row[p] for p in params_list[:-1]] + [
                             row[params_list[-1]]
                         ]
-                        y_fit = hill_funct(x_fit, *hill_params)
+                        y_fit = hill_function_utils.hill_funct(x_fit, *hill_params)
                         axg.plot(x_fit, y_fit, c=color, zorder=1000)
 
             fig_axs_list.append((fig, axs_grid))
@@ -4902,6 +5324,80 @@ class BarSeqFitnessFrame:
         plot_ligands=None,
         show_progress=True,
     ):
+        """
+        Calibrate fitness difference parameters using a Hill function.
+
+        Parameters
+        ----------
+        all_cytometry_Hill_fits : pandas.DataFrame
+            DataFrame containing Hill function fits to cytometry data.
+        spike_in_initial : str, optional
+            Initial to use for spike-in normalization (default: None).
+        run_stan_fit : bool, optional
+            Whether to run the Stan fit (default: False).
+        plot_raw_fitness : bool, optional
+            Whether to plot raw fitness values (default: False).
+        include_zero_antibiotic : bool, optional
+            Whether to include zero antibiotic concentration in the plot (default: False).
+        color_by_ligand_conc : str, optional
+            Ligand concentration to color by (default: None).
+        save_fitness_difference_params : bool, optional
+            Whether to save the fitness difference parameters (default: False).
+        rs_exclude_list : list of str, optional
+            List of RS names to exclude from the fit (default: []).
+        show_exclude_data : bool, optional
+            Whether to show excluded data in the plot (default: True).
+        use_only_rs_variants : bool, optional
+            Whether to use only RS variants in the fit (default: False).
+        RS_list : list of str, optional
+            List of RS names to use in the fit (default: None).
+        wt_cutoff : float, optional
+            Cutoff for wild-type fitness values (default: 0).
+        min_err : float or dict, optional
+            Minimum error value (default: 0.05).
+        show_old_fit : bool, optional
+            Whether to show the old fit in the plot (default: True).
+        apply_ramr_correction : bool, optional
+            Whether to apply the RamR correction (default: None).
+        turn_off_cmdstanpy_logger : bool, optional
+            Whether to turn off the cmdstanpy logger (default: True).
+        robust_error_model : bool, optional
+            Whether to use a robust error model (default: False).
+        robust_nu : int, optional
+            Robust error model nu parameter (default: 4).
+        repeat_after_dropping_outliers : bool, optional
+            Whether to repeat the fit after dropping outliers (default: False).
+        re_stan_on_rhat : bool, optional
+            Whether to re-run Stan if R-hat is high (default: True).
+        rhat_cutoff : float, optional
+            R-hat cutoff value (default: 1.05).
+        outlier_cutoff : float, optional
+            Outlier cutoff value (default: 2.5).
+        return_fig : bool, optional
+            Whether to return the figure object (default: False).
+        return_resid_table : bool, optional
+            Whether to return the residual table (default: False).
+        return_fit_data : bool, optional
+            Whether to return the fit data (default: False).
+        fig_size : list of int, optional
+            Figure size (default: [12, 6]).
+        alpha : float, optional
+            Transparency value for the plot (default: 0.7).
+        plot_ligands : list of str, optional
+            List of ligands to plot (default: None).
+        show_progress : bool, optional
+            Whether to show progress (default: True).
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The figure object, returned if return_fig is True.
+        resid_table : pandas.DataFrame
+            The residual table, returned if return_resid_table is True.
+        fit_data : list of pandas.DataFrame
+            The fit data, returned if return_fit_data is True.
+        """
+
         if spike_in_initial is None:
             spike_in_initial = self.get_default_initial()
         spike_in = stan_utils.get_spike_in_name_from_initial(
@@ -5725,6 +6221,33 @@ class BarSeqFitnessFrame:
         plot_all_dates=True,
         return_plot=False,
     ):
+        """
+        Set the RamR fitness correction using a Gradient Boosting Regressor.
+
+        Parameters
+        ----------
+        resid_frame : pandas.DataFrame
+            DataFrame containing the residual values to correct.
+        auto_save : bool, optional
+            Whether to automatically save the corrected frame (default: True).
+        overwrite : bool, optional
+            Whether to overwrite an existing saved frame (default: False).
+        plot_all_dates : bool, optional
+            Whether to plot the correction for all dates (default: True).
+        return_plot : bool, optional
+            Whether to return the plot object (default: False).
+
+        Returns
+        -------
+        fig, axs : matplotlib.figure.Figure, numpy.ndarray of matplotlib.axes.Axes
+            The plot object, returned if return_plot is True.
+
+        Notes
+        -----
+        This method sets the RamR fitness correction using a Gradient Boosting Regressor.
+        It takes a DataFrame of residual values, fits the model, and applies the correction.
+        The corrected frame can be automatically saved, and a plot of the correction can be returned.
+        """
         from sklearn.ensemble import GradientBoostingRegressor
 
         min_samples_split = 5
@@ -5808,6 +6331,28 @@ class BarSeqFitnessFrame:
         show_spike_ins=None,
         plot_samples=None,
     ):
+        """
+        Plot count ratios vs time.
+
+        Parameters
+        ----------
+        plot_range : tuple of float, optional
+            Range of x-values to plot (default: None).
+        with_tet : bool, optional
+            Whether to include tet samples in the plot (default: None).
+        show_spike_ins : bool, optional
+            Whether to show spike-ins in the plot (default: None).
+        plot_samples : list of str, optional
+            List of sample names to include in the plot (default: None).
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method plots count ratios vs time, with options for customizing the plot.
+        """
         return self.plot_or_fit_barcode_ratios(
             plots_not_fits=True,
             plot_range=plot_range,
@@ -5823,6 +6368,31 @@ class BarSeqFitnessFrame:
         alpha=0.1,
         chimera_alpha=0.3,
     ):
+        """
+        Plot a chimera plot.
+
+        Parameters
+        ----------
+        save_plots : bool, optional
+            Whether to save the plot to a PDF file (default: False).
+        chimera_cut_line : callable, optional
+            Function defining the chimera cut line (default: None).
+        plot_size : int, optional
+            Size of the plot (default: 6).
+        alpha : float, optional
+            Transparency value for the plot points (default: 0.1).
+        chimera_alpha : float, optional
+            Transparency value for the chimera points (default: 0.3).
+
+        Returns
+        -------
+        fig, axs : matplotlib.figure.Figure, numpy.ndarray of matplotlib.axes.Axes
+            The plot object.
+
+        Notes
+        -----
+        This method plots a chimera plot, with options for customizing the plot and saving it to a PDF file.
+        """
         barcode_frame = self.barcode_frame[self.barcode_frame["possibleChimera"]]
 
         # Turn interactive plotting on or off depending on show_plots
@@ -5896,6 +6466,43 @@ class BarSeqFitnessFrame:
         ligand=None,
         plot_g0_vs_ginf=True,
     ):
+        """
+        Plot Hill parameters for input frames.
+
+        Parameters
+        ----------
+        input_frames : list of pandas.DataFrame
+            List of DataFrames containing Hill parameters to plot.
+        in_labels : list of str, optional
+            List of labels for the input frames (default: None, which uses empty labels).
+        in_colors : list of str, optional
+            List of colors for the input frames (default: None, which uses a default color).
+        in_alpha : float, optional
+            Transparency value for the input frames (default: 0.7).
+        error_bars : bool, optional
+            Whether to plot error bars (default: True).
+        log_ginf_err_cutoff : float, optional
+            Cutoff value for log_ginf errors (default: 0.71).
+        legend : bool, optional
+            Whether to display a legend (default: True).
+        everything_color : str, optional
+            Color for the background points (default: None, which uses a default color).
+        box_size : int, optional
+            Size of the plot box (default: 6).
+        ligand : str, optional
+            Ligand name (default: None).
+        plot_g0_vs_ginf : bool, optional
+            Whether to plot G0 vs Ginf (default: True).
+
+        Returns
+        -------
+        axs : numpy.ndarray of matplotlib.axes.Axes
+            Array of axes objects for the subplots.
+
+        Notes
+        -----
+        This method plots Hill parameters for the input frames, with options for customizing the plot.
+        """
         if in_labels is None:
             in_labels = [""] * len(input_frames)
 
@@ -6045,6 +6652,20 @@ class BarSeqFitnessFrame:
         pickle_file=None,
         overwrite=False,
     ):
+        """
+        Save the BarSeqFitnessFrame object as a pickle file.
+
+        Parameters
+        ----------
+        pickle_file : str, optional
+            Name of the pickle file (default: None, which uses a default name).
+        overwrite : bool, optional
+            Whether to overwrite an existing file (default: False).
+
+        Notes
+        -----
+        This method saves the BarSeqFitnessFrame object as a pickle file, with options for customizing the file name and overwriting existing files.
+        """
         if pickle_file is None:
             pickle_file = self.experiment + "_BarSeqFitnessFrame.pkl"
 
@@ -6067,6 +6688,7 @@ class BarSeqFitnessFrame:
 
         with open(pickle_file, "wb") as f:
             pickle.dump(self, f)
+
         logger.info(f"BarSeqFitnessFrame saved as: {pickle_file}")
         now = datetime.datetime.now()
         logger.info(now)
@@ -6078,12 +6700,32 @@ class BarSeqFitnessFrame:
         num_good_hill_points=12,
         exclude_mut_regions=None,
     ):
+        """
+        Return a cleaned DataFrame with filtered data.
+
+        Parameters
+        ----------
+        count_threshold : int, optional
+            The minimum total count threshold for filtering (default: 3000).
+        log_ginf_error_cutoff : float, optional
+            The maximum error cutoff for log_ginf values (default: None).
+        num_good_hill_points : int, optional
+            The minimum number of good Hill fit points required (default: 12).
+        exclude_mut_regions : list of str, optional
+            A list of mutation regions to exclude (default: None, which automatically determines the regions to exclude based on the DataFrame columns).
+
+        Returns
+        -------
+        pandas.DataFrame
+            The cleaned DataFrame with filtered data.
+
+        Notes
+        -----
+        This method filters the DataFrame based on the input parameters and returns a cleaned DataFrame.
+        The filtering criteria include total count threshold, log_ginf error cutoff, number of good Hill fit points, and exclusion of mutation regions.
+        """
         frame = self.barcode_frame
         frame = frame[frame["total_counts"] > count_threshold]
-
-        # if log_ginf_error_cutoff is None:
-        #    if self.experiment == '2019-10-16_IPTG_Select-DNA-5-plates':
-        #        log_ginf_error_cutoff = 0.7
 
         if log_ginf_error_cutoff is not None:
             if "log_ginf" in frame.columns.values:
@@ -6134,6 +6776,35 @@ class BarSeqFitnessFrame:
     def plot_hill_param_density_scatter(
         self, plot_frame=None, log_z=True, log_g=True, ligand="IPTG", box_size=4
     ):
+        """
+        Plot a density scatter plot of Hill fit parameters.
+
+        Parameters
+        ----------
+        plot_frame : pandas.DataFrame, optional
+            The DataFrame containing the Hill fit parameters (default: None, which uses the object's barcode_frame).
+        log_z : bool, optional
+            Whether to plot the z-axis (density) on a log scale (default: True).
+        log_g : bool, optional
+            Whether to plot the y-axis (G∞) on a log scale (default: True).
+        ligand : str, optional
+            The ligand for which to plot the Hill fit parameters (default: "IPTG").
+        box_size : int, optional
+            The size of the plot box (default: 4).
+
+        Returns
+        -------
+        axs : numpy.ndarray of matplotlib.axes.Axes
+            The axes objects for the subplots.
+        fig : matplotlib.figure.Figure
+            The figure object for the plot.
+
+        Notes
+        -----
+        This method plots a density scatter plot of Hill fit parameters, including G0, G∞,
+        EC50, and the G∞/G0 ratio. The plot is customized based on the input parameters.
+        """
+
         if plot_frame is None:
             plot_frame = self.barcode_frame
 
@@ -6263,6 +6934,36 @@ class BarSeqFitnessFrame:
         anti_list=None,
         apply_ramr_correction=None,
     ):
+        """
+        Prepare data for Stan modeling.
+
+        Parameters
+        ----------
+        st_row : pandas.Series
+            A row from the summary table.
+        old_style_columns : bool, optional
+            Whether to use old-style column names (default: False).
+        initial : str or list of str, optional
+            Initial value(s) for the model (default: None, which uses the default initial value).
+        is_gp_model : bool, optional
+            Whether this is a Gaussian process model (default: False).
+        min_err : float, optional
+            Minimum error value (default: 0.05).
+        anti_list : list of float, optional
+            List of antibiotic concentrations (default: None).
+        apply_ramr_correction : bool, optional
+            Whether to apply the RamR correction (default: None, which uses the default behavior).
+
+        Returns
+        -------
+        dict
+            A dictionary containing the prepared data for Stan modeling.
+
+        Notes
+        -----
+        This method prepares data for Stan modeling by extracting relevant information from the
+        input `st_row` and other attributes of the object. The prepared data is returned as a dictionary.
+        """
         if initial is None:
             initial = self.get_default_initial()
 
