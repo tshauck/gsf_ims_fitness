@@ -5,13 +5,15 @@ Created on Fri Nov 22 09:29:34 2019
 @author: djross
 """
 
+import logging
+import pathlib
 import glob  # filenames and pathnames utility
 import os  # operating sytem utility
 import sys
 import warnings
 import datetime
-import logging
 import traceback
+from IPython.display import display
 
 import matplotlib.pyplot as plt
 from matplotlib import colors
@@ -21,25 +23,19 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
 
-# from scipy import special
-# from scipy import misc
 from scipy import stats
 
-# import pystan
 import pickle
 
 import cmocean
 
 import seaborn as sns
 
-sns.set()
-
-from IPython.display import display
-# import ipywidgets as widgets
-# from ipywidgets import interact#, interact_manual
-
 from . import fitness
 from . import stan_utility
+
+sns.set()
+
 
 sns.set_style("white")
 sns.set_style(
@@ -51,6 +47,9 @@ sns.set_style(
         "ytick.right": True,
     },
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class BarSeqFitnessFrame:
@@ -81,14 +80,14 @@ class BarSeqFitnessFrame:
 
         self.experiment = experiment
 
-        print(f"Importing BarSeq count data for experiment: {experiment}")
+        logger.info(f"Importing BarSeq count data for experiment: {experiment}")
 
         self.data_directory = data_directory
 
         if barcode_file is None:
             barcode_file = self.data_directory.glob("*.trimmed_sorted_counts.csv")[0]
 
-        print(f"Importing BarSeq count data from file: {barcode_file}")
+        logger.info(f"Importing BarSeq count data from file: {barcode_file}")
         barcode_frame = pd.read_csv(barcode_file, skipinitialspace=True)
 
         # Add barcode cluster IDs and scores
@@ -132,10 +131,10 @@ class BarSeqFitnessFrame:
 
         # if single_barcode, merge barcodes that result from obvious read errors (differences between forward and reverse reads)
         if single_barcode:
-            print(
+            logger.info(
                 "Automatically merging barcodes based on comparison between forward and reverse BC reads."
             )
-            print("This could take a several minutes.")
+            logger.info("This could take several minutes.")
 
             merge_log_file = f"{experiment}_single_barcode_merging.log"
             with open(merge_log_file, "w") as log_file:
@@ -151,9 +150,6 @@ class BarSeqFitnessFrame:
 
                 for_barcode_center_dict = dict(
                     zip(f_bc_cluster_frame["Cluster.ID"], f_bc_cluster_frame["Center"])
-                )
-                rev_barcode_center_dict = dict(
-                    zip(r_bc_cluster_frame["Cluster.ID"], r_bc_cluster_frame["Center"])
                 )
                 for_barcode_count_dict = dict(
                     zip(
@@ -255,7 +251,6 @@ class BarSeqFitnessFrame:
                         # Default action is to merge all barcodes in df with no warnings
                         #     So, if all the rows in df have the same reverse barcode, they will be merged.
                         merge = [True] * len(df)
-                        merge_warning = [False] * len(df)
 
                         rev_bc_list = df.reverse_BC
                         # If the rows in df have different reverse barcodes, consider merging based on distance between forward and RC of reverse barcodes
@@ -294,10 +289,11 @@ class BarSeqFitnessFrame:
 
                             # rev_merge_list.append(list(merge_df.rev_BC_ID))
 
-                        log_file.write(
-                            f"    Reverse barcodes considered for merging based on distance of reverse complement to forward BC:\n"
+                        logger.info(
+                            "Reverse barcodes considered for merging based on distance of reverse complement to forward BC:"
                         )
-                        log_file.write(f"                   Forward BC: {for_bc}\n")
+                        logger.info(f"                   Forward BC: {for_bc}")
+
                         for m, rc_bc, bc, r_bc_id, dist_metric, dist in zip(
                             merge,
                             rc_rev_bc,
@@ -307,7 +303,7 @@ class BarSeqFitnessFrame:
                             dist_list,
                         ):
                             log_str = "Yes merging" if m else "NOT merging"
-                            log_file.write(
+                            logger.info(
                                 f"        {log_str}: Rev-comp: {rc_bc}, BC: {bc}, ID: {r_bc_id}, count: {rev_barcode_count_dict[r_bc_id]}, {dist_metric} distance: {dist}\n"
                             )
 
@@ -315,11 +311,9 @@ class BarSeqFitnessFrame:
                 pickle.dump(bc_merge_dict, f)
 
             barcode_frame = pd.DataFrame(new_row_list)
-            print()
 
         barcode_frame.sort_values("total_counts", ascending=False, inplace=True)
         barcode_frame = barcode_frame[barcode_frame.total_counts >= min_read_count]
-        # barcode_frame.reset_index(drop=True, inplace=True)
 
         self.barcode_frame = barcode_frame
 
@@ -328,43 +322,28 @@ class BarSeqFitnessFrame:
 
         self.plasmid = plasmid
 
-        if get_layout_from_file:
-            if growth_plate_layout_file is None:
-                growth_plate_layout_file = self.find_growth_plate_layout_file()
-            self.set_sample_plate_map(
-                auto_save=False,
-                growth_plate_layout_file=growth_plate_layout_file,
-                plasmid=self.plasmid,
-            )
+        if growth_plate_layout_file is None:
+            growth_plate_layout_file = self.find_growth_plate_layout_file()
 
-            self.antibiotic_conc_list = list(
-                np.unique(self.sample_plate_map.antibiotic_conc)
-            )
-            lig_id_list = list(np.unique(self.sample_plate_map["ligand"]))
-            if "none" in lig_id_list:
-                lig_id_list.remove("none")
-            inducer_conc_lists = []
-            for lig in lig_id_list:
-                sub_list = list(np.unique(self.sample_plate_map[lig]))
-                sub_list.remove(0)
-                inducer_conc_lists.append(sub_list)
-            self.inducer_conc_lists = inducer_conc_lists
-            self.ligand_list = lig_id_list
-        else:
-            self.antibiotic_conc_list = antibiotic_conc_list
-            self.antibiotic = antibiotic
+        self.set_sample_plate_map(
+            auto_save=False,
+            growth_plate_layout_file=growth_plate_layout_file,
+            plasmid=self.plasmid,
+        )
 
-            if inducer_conc_lists is None:
-                conc_list = [0, 2]
-                for i in range(10):
-                    conc_list.append(2 * inducer_conc_list[-1])
-                inducer_conc_lists = [conc_list]
-            else:
-                self.inducer_conc_lists = inducer_conc_lists
-
-            self.ligand_list = ligand_list
-
-            self.set_sample_plate_map(auto_save=False)
+        self.antibiotic_conc_list = list(
+            np.unique(self.sample_plate_map.antibiotic_conc)
+        )
+        lig_id_list = list(np.unique(self.sample_plate_map["ligand"]))
+        if "none" in lig_id_list:
+            lig_id_list.remove("none")
+        inducer_conc_lists = []
+        for lig in lig_id_list:
+            sub_list = list(np.unique(self.sample_plate_map[lig]))
+            sub_list.remove(0)
+            inducer_conc_lists.append(sub_list)
+        self.inducer_conc_lists = inducer_conc_lists
+        self.ligand_list = lig_id_list
 
         self.set_ref_samples(ref_samples)
 
@@ -401,7 +380,7 @@ class BarSeqFitnessFrame:
             barcode_frame = barcode_frame[barcode_frame["total_counts"] > cutoff].copy()
             # barcode_frame.reset_index(drop=True, inplace=True)
 
-        print(f"Calculating read fraction for each barcode in each sample")
+        logger.info("Calculating read fraction for each barcode in each sample")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             for w in fitness.wells():
@@ -412,8 +391,8 @@ class BarSeqFitnessFrame:
                 barcode_frame["total_counts"].sum()
             )
 
-        print(
-            f"Calculating read totals and fractions for each barcode in samples from first time point"
+        logger.info(
+            "Calculating read totals and fractions for each barcode in samples from first time point"
         )
         total = []
         for index, row in barcode_frame[fitness.wells_by_column()[:24]].iterrows():
@@ -434,38 +413,24 @@ class BarSeqFitnessFrame:
         if export_trimmed_file:
             if trimmed_export_file is None:
                 trimmed_export_file = f"{self.experiment}.trimmed_sorted_counts.csv"
-            print(f"Exporting trimmed barcode counts data to: {trimmed_export_file}")
+
+            logger.info(
+                f"Exporting trimmed barcode counts data to: {trimmed_export_file}"
+            )
             barcode_frame.to_csv(trimmed_export_file)
 
         if auto_save:
             self.save_as_pickle(overwrite=overwrite)
 
     def label_reference_sequences(
-        self, ref_seq_file_path=None, show_output=True, auto_save=True, overwrite=False
+        self,
+        ref_seq_file_path: pathlib.Path,
+        show_output=True,
+        auto_save=True,
+        overwrite=False,
     ):
         barcode_frame = self.barcode_frame
-
-        if ref_seq_file_path is None:
-            ref_seq_file = "reference_sequences.csv"
-            ref_seq_file_found = False
-            top_directory = self.notebook_dir
-            while not ref_seq_file_found:
-                find_result = top_directory.rfind("\\")
-                if find_result == -1:
-                    break
-                else:
-                    top_directory = top_directory[:find_result]
-                    os.chdir(top_directory)
-                    ref_seq_file_found = os.path.isfile(ref_seq_file)
-
-            if ref_seq_file_found:
-                ref_seq_frame = pd.read_csv(ref_seq_file, skipinitialspace=True)
-            else:
-                ref_seq_frame = None
-        else:
-            ref_seq_frame = pd.read_csv(ref_seq_file_path, skipinitialspace=True)
-
-        os.chdir(self.data_directory)
+        ref_seq_frame = pd.read_csv(ref_seq_file_path, skipinitialspace=True)
 
         name_list = [""] * len(barcode_frame)
         barcode_frame["RS_name"] = name_list
@@ -492,7 +457,7 @@ class BarSeqFitnessFrame:
 
         if ref_seq_frame is not None:
             no_match_list = []
-            for index, row in ref_seq_frame.iterrows():
+            for _, row in ref_seq_frame.iterrows():
                 display_frame = barcode_frame[
                     barcode_frame["forward_BC"].str.contains(row["forward_lin_tag"])
                 ]
@@ -522,17 +487,18 @@ class BarSeqFitnessFrame:
                         display(display_frame)
                 else:
                     n = row["RS_name"]
-                    print(f"found more than one possible match for {n}")
-            print(f"no matches found for:")
+                    logger.info(f"found more than one possible match for {n}")
+
+            logger.info("no matches found for:")
             for n in np.unique(no_match_list):
-                print(f"    {n}")
-            print()
+                logger.info(f"    {n}")
+
             total_reads = barcode_frame["total_counts"].sum()
-            print(f"total reads: {total_reads}")
+            logger.info(f"total reads: {total_reads}")
             total_RS_reads = barcode_frame[barcode_frame["RS_name"] != ""][
                 "total_counts"
             ].sum()
-            print(
+            logger.info(
                 f"reference sequence reads: {total_RS_reads} ({total_RS_reads/total_reads*100}%)"
             )
 
@@ -553,9 +519,9 @@ class BarSeqFitnessFrame:
             comp_data = barcode_frame[barcode_frame.index < index]
 
             for_matches = comp_data[comp_data["forward_BC"] == row["forward_BC"]]
-            for_matches = for_matches[for_matches["possibleChimera"] == False]
+            for_matches = for_matches[~for_matches["possibleChimera"]]
             rev_matches = comp_data[comp_data["reverse_BC"] == row["reverse_BC"]]
-            rev_matches = rev_matches[rev_matches["possibleChimera"] == False]
+            rev_matches = rev_matches[~rev_matches["possibleChimera"]]
             if (len(for_matches) > 0) & (len(rev_matches) > 0):
                 # barcode_frame.at[index, "possibleChimera"] = True
                 barcode_frame.at[index, "forward_parent"] = for_matches.index[0]
@@ -594,9 +560,10 @@ class BarSeqFitnessFrame:
                 comp_data = barcode_frame.loc[: index - 1]
 
             for_matches = comp_data[comp_data["forward_BC"] == row["forward_BC"]]
-            for_matches = for_matches[for_matches["possibleChimera"] == False]
+            for_matches = for_matches[~for_matches["possibleChimera"]]
             rev_matches = comp_data[comp_data["reverse_BC"] == row["reverse_BC"]]
-            rev_matches = rev_matches[rev_matches["possibleChimera"] == False]
+            rev_matches = rev_matches[~rev_matches["possibleChimera"]]
+
             if (len(for_matches) > 0) & (len(rev_matches) > 0):
                 barcode_frame.at[index, "possibleChimera"] = True
                 barcode_frame.at[index, "forward_parent"] = for_matches.index[0]
@@ -613,7 +580,9 @@ class BarSeqFitnessFrame:
                 barcode_frame.at[index, "parent_geo_mean_p2"] = geo_mean_p2
 
         chimera_frame = barcode_frame[barcode_frame["possibleChimera"]]
-        print(f"Number of potential chimera barcodes identified: {len(chimera_frame)}")
+        logger.info(
+            f"Number of potential chimera barcodes identified: {len(chimera_frame)}"
+        )
 
         self.barcode_frame = barcode_frame
 
@@ -685,11 +654,13 @@ class BarSeqFitnessFrame:
 
         if index is None:
             # run Stan fits for all barcodes in barcode_frame
-            print(
-                "Using Stan model to detirmine slope of log(count ratio) for all barcodes in dataset"
+            logger.info(
+                "Using Stan model to determine slope of log(count ratio) for all barcodes in dataset"
             )
             for ig in self.ignore_samples:
-                print(f"ignoring or de-weighting sample {ig[0]}, time point {ig[1]-1}")
+                logger.info(
+                    f"ignoring or de-weighting sample {ig[0]}, time point {ig[1]-1}"
+                )
 
             arg_dict["return_fits"] = False
             arg_dict["verbose"] = False
@@ -718,7 +689,7 @@ class BarSeqFitnessFrame:
             log_ratio_q_dict = {}
 
             ind = fit_frame.index[0]
-            print(0, ind)
+            logger.info(0, ind)
             ret_dict = self.stan_barcode_slope_index(index=ind, **arg_dict)
             key_list = [k for k in ret_dict.keys()]
             for key in key_list:
@@ -728,10 +699,10 @@ class BarSeqFitnessFrame:
                 resid_list_dict[key] = [params[2]]
                 log_ratio_q_dict[key] = [params[3]]
 
-            print_interval = 10 ** (np.round(np.log10(len(fit_frame))) - 1)
+            logger.info_interval = 10 ** (np.round(np.log10(len(fit_frame))) - 1)
             for j, ind in enumerate(fit_frame.iloc[1:].index):
-                if j % print_interval == 0:
-                    print(j + 1, ind)
+                if j % logger.info_interval == 0:
+                    logger.info(j + 1, ind)
                 ret_dict = self.stan_barcode_slope_index(index=ind, **arg_dict)
                 for key in key_list:
                     params = ret_dict[key]
@@ -862,7 +833,7 @@ class BarSeqFitnessFrame:
                     df = df[df.growth_plate == gp]
                     df = df[df[ligand_list[0]] == x]
                     if len(df) > 1:
-                        print("problem converting ignore_samples")
+                        logger.info("problem converting ignore_samples")
                     elif len(df) == 1:
                         row = df.iloc[0]
                         new_ignore.append((row.sample_id, gp))
@@ -870,10 +841,9 @@ class BarSeqFitnessFrame:
                 ignore_samples = new_ignore
             if verbose:
                 for ig in ignore_samples:
-                    print(
+                    logger.info(
                         f"ignoring or de-weighting sample {ig[0]}, time point {ig[1]-1}"
                     )
-                print()
 
         sample_list = np.unique(sample_plate_map.sample_id)
         # dictionary where each entry is a list of 4 booleans indicating whether or not
@@ -899,7 +869,6 @@ class BarSeqFitnessFrame:
             well_list = list(df.well.values)
 
             if f"read_count_S{s}" not in barcode_frame.columns:
-                count_list = []
                 bc_arr = np.array(
                     [barcode_frame[w].values for w in well_list]
                 ).transpose()
@@ -907,9 +876,8 @@ class BarSeqFitnessFrame:
                 barcode_frame[f"read_count_S{s}"] = [list(x) for x in bc_arr]
 
         if verbose:
-            print(f"samples_with_tet: {samples_with_tet}")
-            print(f"samples_without_tet: {samples_without_tet}")
-            print()
+            logger.info(f"samples_with_tet: {samples_with_tet}")
+            logger.info(f"samples_without_tet: {samples_without_tet}")
 
         existing_plate_map = getattr(self, "sample_plate_map", None)
         if existing_plate_map is not None:
@@ -970,7 +938,7 @@ class BarSeqFitnessFrame:
             non_ref_without_tet = list(set(samples_without_tet) - set(ref_samples))
 
         if verbose:
-            print(f"Using these samples as reference samples: {ref_samples}")
+            logger.info(f"Using these samples as reference samples: {ref_samples}")
 
         row = barcode_frame.loc[index]
 
@@ -1031,7 +999,7 @@ class BarSeqFitnessFrame:
         for samp_list in [ref_samples, non_ref_without_tet]:
             for samp in samp_list:
                 if verbose:
-                    print(f"    sample {samp}")
+                    logger.info(f"    sample {samp}")
                 df = sample_plate_map
                 df = df[df["sample_id"] == samp]
                 df = df.sort_values("growth_plate")
@@ -1138,10 +1106,9 @@ class BarSeqFitnessFrame:
                 slope_0_mu = np.mean(fit_result)
                 slope_0_sig = np.std(fit_result)
 
-        rng = np.random.default_rng()
         for samp in samples_with_tet:
             if verbose:
-                print(f"    sample {samp}")
+                logger.info(f"    sample {samp}")
             df = sample_plate_map
             df = df[df["sample_id"] == samp]
             df = df.sort_values("growth_plate")
@@ -1205,11 +1172,12 @@ class BarSeqFitnessFrame:
                         adapt_delta=adapt_delta,
                         output_dir=stan_output_dir,
                     )
-                    last_good_stan_fit = stan_fit
                 except RuntimeError as err:
                     if "Initialization failed" in f"{err}":
-                        print(f"Stan random init failed, re-trying with defined init.")
-                        print(f"spike_in_reads: {spike_in_reads}")
+                        logger.info(
+                            "Stan random init failed, re-trying with defined init."
+                        )
+                        logger.info(f"spike_in_reads: {spike_in_reads}")
 
                         n_mean = n_reads.astype(float)
                         n_mean[n_mean == 0] = 0.1
@@ -1219,21 +1187,21 @@ class BarSeqFitnessFrame:
 
                         y = np.log(n_mean) - np.log(spike_in_reads)
                         s = np.sqrt(1 / n_mean + 1 / spike_in_reads)
-                        print(f"x: {x}")
-                        print(f"y: {y}")
-                        print(f"s: {s}")
+                        logger.info(f"x: {x}")
+                        logger.info(f"y: {y}")
+                        logger.info(f"s: {s}")
 
                         popt, pcov = curve_fit(
                             fitness.line_funct, x, y, sigma=s, absolute_sigma=True
                         )
-                        print(f"popt: {popt}")
+                        logger.info(f"popt: {popt}")
                         log_slope = popt[0]
                         log_intercept = popt[1] - log_starting_ratio
 
                         log_err = (
                             log_ratios - log_starting_ratio - log_intercept
                         ) - log_slope * x
-                        print(f"log_err: {log_err}")
+                        logger.info(f"log_err: {log_err}")
                         tau_rev = tau.copy()
                         tau_rev[n_reads == 0] *= 30
                         log_err_tilda = log_err / tau_rev
@@ -1242,14 +1210,14 @@ class BarSeqFitnessFrame:
                         stan_init["log_slope"] = log_slope
                         stan_init["log_intercept"] = log_intercept
                         stan_init["log_err_tilda"] = log_err_tilda
-                        print(stan_init)
+                        logger.info(stan_init)
 
                         n_mean_test = spike_in_reads * np.exp(
                             log_starting_ratio + log_intercept + log_slope * x + log_err
                         )
-                        print(f"n_mean_test: {n_mean_test}")
+                        logger.info(f"n_mean_test: {n_mean_test}")
 
-                        # print(f'last good stan: {last_good_stan_fit.get_last_position()}')
+                        # logger.info(f'last good stan: {last_good_stan_fit.get_last_position()}')
 
                         try:
                             stan_fit = stan_model_with_tet.sample(
@@ -1263,12 +1231,13 @@ class BarSeqFitnessFrame:
                             )
 
                         except Exception as err:
-                            print(f"Stan fit failed again, giving up: {err}")
+                            logger.info(f"Stan fit failed again, giving up: {err}")
                             stan_fit = "failed"
                     else:
-                        print(f"Stan fit error: {err}")
-                except:
-                    print("Stan fit failed")
+                        logger.info(f"Stan fit error: {err}")
+
+                except Exception:
+                    logger.info("Stan fit failed")
                     stan_fit = "failed"
 
                 if return_fits:
@@ -1377,7 +1346,9 @@ class BarSeqFitnessFrame:
         min_log_count_error=0,
     ):
         for ig in self.ignore_samples:
-            print(f"ignoring or de-weighting sample {ig[0]}, time point {ig[1]-1}")
+            logger.info(
+                f"ignoring or de-weighting sample {ig[0]}, time point {ig[1]-1}"
+            )
 
         return self.plot_or_fit_barcode_ratios(
             auto_save=auto_save,
@@ -1408,7 +1379,9 @@ class BarSeqFitnessFrame:
         if spike_in_initial is None:
             spike_in_initial = self.get_default_initial()
 
-        spike_in = fitness.get_spike_in_name_from_inital(self.plasmid, spike_in_initial)
+        spike_in = stan_utility.get_spike_in_name_from_inital(
+            self.plasmid, spike_in_initial
+        )
 
         spike_in_row = self.barcode_frame[self.barcode_frame.RS_name == spike_in].iloc[
             0
@@ -1524,7 +1497,7 @@ class BarSeqFitnessFrame:
             if plots_not_fits:
                 pass
             else:
-                print(
+                logger.info(
                     f"Fitting to log(barcode ratios) to find fitness for each barcode in {self.experiment}"
                 )
 
@@ -1545,9 +1518,6 @@ class BarSeqFitnessFrame:
         #         the first interpolating function is the mean estimate for the fitness as a function of ligand concentration
         #         the second interpolating function is the posterior std for the fitness as a function of ligand concentration
         # spike_in_fitness_dict = fitness.fitness_calibration_dict(plasmid=self.plasmid, barseq_directory=self.notebook_dir)
-
-        antibiotic_conc_list = self.antibiotic_conc_list
-        high_tet = antibiotic_conc_list[-1]
 
         if self.plasmid == "pVER":
             spike_1 = "AO-B"
@@ -1589,8 +1559,8 @@ class BarSeqFitnessFrame:
             ref_fit_str_E = str(spike_in_fitness_dict[0][spike_2]) + ';' + str(spike_in_fitness_dict[low_tet][spike_2]) + ';' + str(spike_in_fitness_dict[high_tet][spike_2])
 
         if not plots_not_fits:
-            print(f'Reference fitness values, {spike_1}: {ref_fit_str_B}, {spike_2}: {ref_fit_str_E}')
-            print()
+            logger.info(f'Reference fitness values, {spike_1}: {ref_fit_str_B}, {spike_2}: {ref_fit_str_E}')
+            logger.info()
         """
 
         # ref_index_b = barcode_frame[barcode_frame["RS_name"]==spike_1].index[0]
@@ -1602,14 +1572,14 @@ class BarSeqFitnessFrame:
             spike_2: barcode_frame[barcode_frame["RS_name"] == spike_2].iloc[0],
         }
 
-        # These are only used for printing out info: the read counts for the 1st reference sample
+        # These are only used for logger.infoing out info: the read counts for the 1st reference sample
         samp = self.ref_samples[0]
         sp_1 = spike_in_row_dict[spike_1][["RS_name", f"read_count_S{samp}"]]
         sp_2 = spike_in_row_dict[spike_2][["RS_name", f"read_count_S{samp}"]]
         if not plots_not_fits:
-            print(f"{spike_1}: {sp_1}")
-            print(f"{spike_2}: {sp_2}")
-            print()
+            logger.info(f"{spike_1}: {sp_1}")
+            logger.info(f"{spike_2}: {sp_2}")
+            logger.info()
 
         # Fit to barcode log(ratios) over time to get slopes = fitness
         #     use both spike-ins as reference (separately)
@@ -1631,7 +1601,7 @@ class BarSeqFitnessFrame:
             axs = [None for i in range(len(fit_frame))]
 
         x0 = np.array([2, 3, 4, 5])
-        print()
+        logger.info()
         for spike_in, initial in zip([spike_1, spike_2], [spike_1_init, spike_2_init]):
             no_tet_slope_lists = []
 
@@ -1763,13 +1733,11 @@ class BarSeqFitnessFrame:
                     spike_in_row_dict[spike_in][well_list], dtype="int64"
                 )
 
-                tet_conc = df.antibiotic_conc.iloc[0]
-                # spike_in_fitness = spike_in_fitness_dict[tet_conc][spike_in]
-
                 f_est_list = []
                 f_err_list = []
                 resids_list = []
                 log_ratio_out_list = []
+
                 for (index, row), slope_0, ax in zip(
                     fit_frame.iterrows(), no_tet_slope, axs
                 ):  # iterate over barcodes
@@ -1779,7 +1747,7 @@ class BarSeqFitnessFrame:
                         and (samp == samples_with_tet[0])
                     ):
                         barcode_str = str(index) + ": "
-                        barcode_str += format(row[f"total_counts"], ",") + "; "
+                        barcode_str += format(row["total_counts"], ",") + "; "
                         barcode_str += row["RS_name"]
                         if show_bc_str:
                             barcode_str += ": " + row["forward_BC"] + ",\n"
@@ -1959,7 +1927,7 @@ class BarSeqFitnessFrame:
 
         if initial is None:
             initial = self.get_default_initial()
-        spike_in = fitness.get_spike_in_name_from_inital(plasmid, initial)
+        spike_in = stan_utility.get_spike_in_name_from_inital(plasmid, initial)
 
         for samp in sample_list:
             df = sample_plate_map
@@ -2033,8 +2001,6 @@ class BarSeqFitnessFrame:
             initial = self.get_default_initial()
 
         barcode_frame = self.barcode_frame
-
-        antibiotic_conc_list = self.antibiotic_conc_list
 
         ligand_list = self.ligand_list
         antibiotic = self.antibiotic
@@ -2187,12 +2153,12 @@ class BarSeqFitnessFrame:
         if initial is None:
             initial = self.get_default_initial()
 
-        print(
+        logger.info(
             f"Using Stan to fit to fitness curves to find sensor parameters for {self.experiment}"
         )
-        print(f"  Using fitness parameters for {plasmid}:")
-        print(f"      {fit_fitness_difference_params}")
-        print("      Method version from 2023-06-04")
+        logger.info(f"  Using fitness parameters for {plasmid}:")
+        logger.info(f"      {fit_fitness_difference_params}")
+        logger.info("      Method version from 2023-06-04")
 
         barcode_frame = self.barcode_frame
 
@@ -2207,8 +2173,6 @@ class BarSeqFitnessFrame:
             old_style_columns, linthresh, fit_plot_colors, plot_df = (
                 fitness_columns_setup
             )
-
-        antibiotic_conc_list = self.antibiotic_conc_list
 
         if len(ligand_list) == 1:
             sm_file = "Double Hill equation fit.stan"
@@ -2291,7 +2255,7 @@ class BarSeqFitnessFrame:
 
         key_params = params_list
 
-        print(f"    Using model from file: {sm_file}")
+        logger.info(f"    Using model from file: {sm_file}")
         stan_model = stan_utility.compile_model(sm_file)
 
         quantile_list = [0.05, 0.25, 0.5, 0.75, 0.95]
@@ -2300,16 +2264,18 @@ class BarSeqFitnessFrame:
         log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf = fitness.log_g_limits(
             plasmid=plasmid
         )
-        print(
+        logger.info(
             f"log_g_limits: {log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf}"
         )
 
         rng = np.random.default_rng()
 
         def stan_fit_row(st_row, st_index, lig_list, return_fit=False):
-            print()
+            logger.info()
             now = datetime.datetime.now()
-            print(f"{now}, fitting row index: {st_index}, for ligands: {lig_list}")
+            logger.info(
+                f"{now}, fitting row index: {st_index}, for ligands: {lig_list}"
+            )
 
             # For multi-ligand experiment, missing data can't just be dropped
             is_gp_model = len(lig_list) > 1
@@ -2321,7 +2287,7 @@ class BarSeqFitnessFrame:
 
                 if log_x_max is not None:
                     stan_data["log_x_max"] = log_x_max
-                    print(f"Manually setting log_x_max: {log_x_max}")
+                    logger.info(f"Manually setting log_x_max: {log_x_max}")
 
                 if len(lig_list) == 1:
                     stan_init = init_stan_fit_single_ligand(
@@ -2336,10 +2302,10 @@ class BarSeqFitnessFrame:
                         stan_data, fit_fitness_difference_params, plasmid=plasmid
                     )
 
-                # print("stan_data:")
+                # logger.info("stan_data:")
                 # for k, v in stan_data.items():
-                #    print(f"{k}: {v}")
-                # print()
+                #    logger.info(f"{k}: {v}")
+                # logger.info()
                 stan_fit = stan_model.sample(
                     data=stan_data,
                     iter_sampling=iter_sampling,
@@ -2356,7 +2322,7 @@ class BarSeqFitnessFrame:
                         stan_fit, rhat_cutoff=rhat_cutoff, stan_parameters=key_params
                     )
                     if len(rhat_params) > 0:
-                        print(
+                        logger.info(
                             f"Re-running Stan fit becasue the following parameterrs had r_hat > {rhat_cutoff}: {rhat_params}"
                         )
                         stan_fit = stan_model.sample(
@@ -2376,11 +2342,13 @@ class BarSeqFitnessFrame:
                             stan_parameters=key_params,
                         )
                         if len(rhat_params) > 0:
-                            print(
+                            logger.info(
                                 f"    The following parameters still had r_hat > {rhat_cutoff}: {rhat_params}"
                             )
                         else:
-                            print(f"    All parameters now have r_hat < {rhat_cutoff}")
+                            logger.info(
+                                f"    All parameters now have r_hat < {rhat_cutoff}"
+                            )
 
                 if return_fit:
                     return stan_fit
@@ -2441,14 +2409,14 @@ class BarSeqFitnessFrame:
                 else:
                     hill_invert_prob = [np.nan] * len(lig_list)
 
-                print(
+                logger.info(
                     f"Error during Stan fitting for index {st_index}: {err}",
                     sys.exc_info()[0],
                 )
                 tb_str = "".join(
                     traceback.format_exception(None, err, err.__traceback__)
                 )
-                print(tb_str)
+                logger.info(tb_str)
 
             return (
                 stan_popt,
@@ -2462,7 +2430,7 @@ class BarSeqFitnessFrame:
             )
 
         if refit_indexes is None:
-            print(
+            logger.info(
                 f"Running Stan fits for all rows in dataframe, number of rows: {len(barcode_frame)}"
             )
             fit_list = [
@@ -2475,10 +2443,10 @@ class BarSeqFitnessFrame:
                     row_to_fit, refit_indexes[0], ligand_list, return_fit=True
                 )
 
-            print(
+            logger.info(
                 f"Running Stan fits for selected rows in dataframe, number of rows: {len(refit_indexes)}"
             )
-            print(f"    selected rows: {refit_indexes}")
+            logger.info(f"    selected rows: {refit_indexes}")
             row_list = [barcode_frame.loc[index] for index in refit_indexes]
             fit_list = [
                 stan_fit_row(row, index, ligand_list)
@@ -2519,9 +2487,9 @@ class BarSeqFitnessFrame:
 
         if refit_indexes is None:
             if index_list == list(barcode_frame.index):
-                print("index lists match")
+                logger.info("index lists match")
             else:
-                print("Warning!! index lists do not match!")
+                logger.info("Warning!! index lists do not match!")
 
             for param, v, err in zip(
                 params_list, np.transpose(popt_list), np.transpose(perr_list)
@@ -2553,9 +2521,9 @@ class BarSeqFitnessFrame:
             barcode_frame["sensor_rms_residuals"] = residuals_list
         else:
             if index_list == list(refit_indexes):
-                print("index lists match")
+                logger.info("index lists match")
             else:
-                print("Warning!! index lists do not match!")
+                logger.info("Warning!! index lists do not match!")
 
             for param, v, err in zip(
                 params_list, np.transpose(popt_list), np.transpose(perr_list)
@@ -2618,8 +2586,6 @@ class BarSeqFitnessFrame:
         cmdstanpy_logger = logging.getLogger("cmdstanpy")
         cmdstanpy_logger.disabled = True
 
-        fit_fitness_difference_params = self.fit_fitness_difference_params
-
         if initial_min_err_list is None:
             initial = self.get_default_initial()
             temp_list = []
@@ -2631,7 +2597,7 @@ class BarSeqFitnessFrame:
         antibiotic_conc_list = [c for (c, i, m) in initial_min_err_list]
         if 0 in antibiotic_conc_list:
             raise ValueError(
-                f"Antibiotic concentrations included as first element of initial_min_err_list tuples cannot be zero."
+                "Antibiotic concentrations included as first element of initial_min_err_list tuples cannot be zero."
             )
         for c in antibiotic_conc_list:
             if c not in self.antibiotic_conc_list:
@@ -2642,14 +2608,20 @@ class BarSeqFitnessFrame:
         initial_list = [i for (c, i, m) in initial_min_err_list]
         min_err_list = [m for (c, i, m) in initial_min_err_list]
 
-        print(f"Using Stan to estimate function from fitness for {self.experiment}")
-        print(f"  Using fitness parameters for {plasmid}:")
+        logger.info(
+            f"Using Stan to estimate function from fitness for {self.experiment}"
+        )
+        logger.info(f"  Using fitness parameters for {plasmid}:")
         for c, i, m in initial_min_err_list:
-            print(f"      {c} {self.antibiotic}, fitness initial: {i}")
-            print(f"      min fitness error: {m}")
-            print(f"        popt: {self.fit_fitness_difference_params[i][c]['popt']}")
-            print(f"        perr: {self.fit_fitness_difference_params[i][c]['perr']}")
-        print("      Method version from 2024-09-23")
+            logger.info(f"      {c} {self.antibiotic}, fitness initial: {i}")
+            logger.info(f"      min fitness error: {m}")
+            logger.info(
+                f"        popt: {self.fit_fitness_difference_params[i][c]['popt']}"
+            )
+            logger.info(
+                f"        perr: {self.fit_fitness_difference_params[i][c]['perr']}"
+            )
+        logger.info("      Method version from 2024-09-23")
 
         barcode_frame = self.barcode_frame
 
@@ -2662,30 +2634,26 @@ class BarSeqFitnessFrame:
         # key_params are the parameters to check for Stan fit convergence:
         key_params = [function_param] + fitness_params_list
 
-        print(f"    Using model from file: {sm_file}")
+        logger.info(f"    Using model from file: {sm_file}")
         stan_model = stan_utility.compile_model(sm_file)
 
         log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf = fitness.log_g_limits(
             plasmid=plasmid
         )
-        print(f"log_g_limits: {log_g_min, log_g_max}")
+        logger.info(f"log_g_limits: {log_g_min, log_g_max}")
 
         sample_plate_map = self.sample_plate_map
         sample_plate_map = sample_plate_map[sample_plate_map.growth_plate == 2]
-
-        rng = np.random.default_rng()
 
         def stan_fit_row(st_row, return_fit=False):
             st_index = st_row.name
             tf = st_row.transcription_factor
             ligand = align_ligand_from_tf(tf)
-            print()
+            logger.info()
             now = datetime.datetime.now()
-            print(
+            logger.info(
                 f"{now}, fitting row index: {st_index}, for ligand {ligand} and TF {tf}"
             )
-
-            ret_dict = {"ligand": ligand}
 
             stan_data = self.bs_frame_stan_data(
                 st_row,
@@ -2715,8 +2683,8 @@ class BarSeqFitnessFrame:
 
                 ligand = "none"
 
-                print()
-                print(
+                logger.info()
+                logger.info(
                     f"Skipping Stan fit for normalization variant, {st_row.RS_name}, at index {st_index}"
                 )
 
@@ -2737,13 +2705,13 @@ class BarSeqFitnessFrame:
                 try:
                     if tf == "all":
                         raise NotImplementedError(
-                            f"stan_single_fitness_to_function() is not yet implemented for variants present in multiple sub-libraries"
+                            "stan_single_fitness_to_function() is not yet implemented for variants present in multiple sub-libraries"
                         )
 
-                    # print("fit_data:")
+                    # logger.info("fit_data:")
                     # for k, v in fit_data.items():
-                    #    print(f"{k}: {v}")
-                    # print()
+                    #    logger.info(f"{k}: {v}")
+                    # logger.info()
                     stan_fit = stan_model.sample(
                         data=fit_data,
                         iter_sampling=iter_sampling,
@@ -2762,7 +2730,7 @@ class BarSeqFitnessFrame:
                             stan_parameters=key_params,
                         )
                         if len(rhat_params) > 0:
-                            print(
+                            logger.info(
                                 f"Re-running Stan fit becasue the following parameterrs had r_hat > {rhat_cutoff}: {rhat_params}"
                             )
                             stan_fit = stan_model.sample(
@@ -2782,11 +2750,11 @@ class BarSeqFitnessFrame:
                                 stan_parameters=key_params,
                             )
                             if len(rhat_params) > 0:
-                                print(
+                                logger.info(
                                     f"    The following parameters still had r_hat > {rhat_cutoff}: {rhat_params}"
                                 )
                             else:
-                                print(
+                                logger.info(
                                     f"    All parameters now have r_hat < {rhat_cutoff}"
                                 )
 
@@ -2820,14 +2788,14 @@ class BarSeqFitnessFrame:
 
                     stan_resid = np.nan
 
-                    print(
+                    logger.info(
                         f"Error during Stan fitting for index {st_index}: {err}",
                         sys.exc_info()[0],
                     )
                     tb_str = "".join(
                         traceback.format_exception(None, err, err.__traceback__)
                     )
-                    print(tb_str)
+                    logger.info(tb_str)
 
             ret_result = {}
             ret_result["ligand_concentrations"] = ligand_concentrations
@@ -2842,7 +2810,7 @@ class BarSeqFitnessFrame:
             return ret_result
 
         if refit_indexes is None:
-            print(
+            logger.info(
                 f"Running Stan fits for all rows in dataframe, number of rows: {len(barcode_frame)}"
             )
             fit_index_list = list(barcode_frame.index)
@@ -2851,10 +2819,10 @@ class BarSeqFitnessFrame:
             if return_fit:
                 return stan_fit_row(row_to_fit, return_fit=True)
 
-            print(
+            logger.info(
                 f"Running Stan fits for selected rows in dataframe, number of rows: {len(refit_indexes)}"
             )
-            print(f"    selected rows: {refit_indexes}")
+            logger.info(f"    selected rows: {refit_indexes}")
             fit_index_list = refit_indexes
 
         row_list = [barcode_frame.loc[index] for index in fit_index_list]
@@ -2888,9 +2856,6 @@ class BarSeqFitnessFrame:
         output_results_list = []
         for ret_result in fit_list:  # iterate over fit results for each barcode/row
             ligand = ret_result["ligand"]
-            non_zero_ligand_conc = [
-                x for x in ret_result["ligand_concentrations"] if x != 0
-            ][0]
 
             output_dict = {}
             for c, log_g_mu, lig_g_sig in zip(
@@ -2927,9 +2892,9 @@ class BarSeqFitnessFrame:
         index_list = [d["st_index"] for d in output_results_list]
         if refit_indexes is None:
             if index_list == list(barcode_frame.index):
-                print("index lists match")
+                logger.info("index lists match")
             else:
-                print("Warning!! index lists do not match!")
+                logger.info("Warning!! index lists do not match!")
 
             for column_name in output_columns:
                 barcode_frame[column_name] = [
@@ -2938,9 +2903,9 @@ class BarSeqFitnessFrame:
 
         else:
             if index_list == list(refit_indexes):
-                print("index lists match")
+                logger.info("index lists match")
             else:
-                print("Warning!! index lists do not match!")
+                logger.info("Warning!! index lists do not match!")
 
             for column_name in output_columns:
                 barcode_frame.loc[index_list, column_name] = [
@@ -2985,12 +2950,12 @@ class BarSeqFitnessFrame:
         if initial is None:
             initial = self.get_default_initial()
 
-        print(
+        logger.info(
             f"Using Stan to fit to fitness curves with GP model for {self.experiment}"
         )
-        print(f"  Using fitness parameters for {plasmid}")
-        print(f"      {fit_fitness_difference_params}")
-        print("      Method version from 2022-11-25")
+        logger.info(f"  Using fitness parameters for {plasmid}")
+        logger.info(f"      {fit_fitness_difference_params}")
+        logger.info("      Method version from 2022-11-25")
 
         barcode_frame = self.barcode_frame
 
@@ -3000,10 +2965,6 @@ class BarSeqFitnessFrame:
 
         if fitness_columns_setup[0]:
             old_style_columns, x, linthresh, fit_plot_colors = fitness_columns_setup
-
-            low_fitness = fit_fitness_difference_params[0]
-            mid_g = fit_fitness_difference_params[1]
-            fitness_n = fit_fitness_difference_params[2]
         else:
             old_style_columns, linthresh, fit_plot_colors, plot_df = (
                 fitness_columns_setup
@@ -3094,13 +3055,13 @@ class BarSeqFitnessFrame:
         quantile_list = [0.05, 0.25, 0.5, 0.75, 0.95]
         quantile_dim = len(quantile_list)
 
-        print(f"    Using model from file: {stan_GP_model}")
+        logger.info(f"    Using model from file: {stan_GP_model}")
         stan_model = stan_utility.compile_model(stan_GP_model)
 
         log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf = fitness.log_g_limits(
             plasmid=plasmid
         )
-        print(
+        logger.info(
             f"log_g_limits: {log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf}"
         )
 
@@ -3108,9 +3069,11 @@ class BarSeqFitnessFrame:
 
         def stan_fit_row(st_row, st_index, lig_list, return_fit=False):
             ret_dict = {"st_index": st_index}
-            print()
+            logger.info()
             now = datetime.datetime.now()
-            print(f"{now}, fitting row index: {st_index}, for ligands: {lig_list}")
+            logger.info(
+                f"{now}, fitting row index: {st_index}, for ligands: {lig_list}"
+            )
 
             single_tet = len(antibiotic_conc_list) == 2
             single_ligand = len(lig_list) == 1
@@ -3142,7 +3105,7 @@ class BarSeqFitnessFrame:
                         stan_fit, rhat_cutoff=rhat_cutoff, stan_parameters=key_params
                     )
                     if len(rhat_params) > 0:
-                        print(
+                        logger.info(
                             f"Re-running Stan fit becasue the following parameterrs had r_hat > {rhat_cutoff}: {rhat_params}"
                         )
                         stan_fit = stan_model.sample(
@@ -3162,11 +3125,13 @@ class BarSeqFitnessFrame:
                             stan_parameters=key_params,
                         )
                         if len(rhat_params) > 0:
-                            print(
+                            logger.info(
                                 f"    The following parameters still had r_hat > {rhat_cutoff}: {rhat_params}"
                             )
                         else:
-                            print(f"    All parameters now have r_hat < {rhat_cutoff}")
+                            logger.info(
+                                f"    All parameters now have r_hat < {rhat_cutoff}"
+                            )
 
                 if return_fit:
                     return stan_fit
@@ -3256,19 +3221,19 @@ class BarSeqFitnessFrame:
 
                 ret_dict["stan_resid"] = np.nan
 
-                print(
+                logger.info(
                     f"Error during Stan fitting for index {st_index}: {err}",
                     sys.exc_info()[0],
                 )
                 tb_str = "".join(
                     traceback.format_exception(None, err, err.__traceback__)
                 )
-                print(tb_str)
+                logger.info(tb_str)
 
             return ret_dict
 
         if refit_indexes is None:
-            print(
+            logger.info(
                 f"Running Stan fits for all rows in dataframe, number of rows: {len(barcode_frame)}"
             )
             fit_list = [
@@ -3281,10 +3246,10 @@ class BarSeqFitnessFrame:
                     row_to_fit, refit_indexes[0], ligand_list, return_fit=True
                 )
 
-            print(
+            logger.info(
                 f"Running Stan fits for selected rows in dataframe, number of rows: {len(refit_indexes)}"
             )
-            print(f"    selected rows: {refit_indexes}")
+            logger.info(f"    selected rows: {refit_indexes}")
 
             row_list = [barcode_frame.loc[index] for index in refit_indexes]
             fit_list = [
@@ -3325,9 +3290,9 @@ class BarSeqFitnessFrame:
 
         if refit_indexes is None:
             if index_list == list(barcode_frame.index):
-                print("index lists match")
+                logger.info("index lists match")
             else:
-                print("Warning!! index lists do not match!")
+                logger.info("Warning!! index lists do not match!")
 
             barcode_frame["GP_params"] = dict_of_fit_lists["stan_popt"]
             barcode_frame["GP_cov"] = dict_of_fit_lists["stan_pcov"]
@@ -3380,9 +3345,9 @@ class BarSeqFitnessFrame:
 
         else:
             if index_list == list(refit_indexes):
-                print("index lists match")
+                logger.info("index lists match")
             else:
-                print("Warning!! index lists do not match!")
+                logger.info("Warning!! index lists do not match!")
 
             for ind, new_popt, new_pcov in zip(
                 index_list,
@@ -3457,9 +3422,11 @@ class BarSeqFitnessFrame:
         # merge each row/barcode in small_bc_index_list into row with big_bc_index (add read counts)
         # remove small rows/barcodes from dataframe
 
-        print(f"Merging {small_bc_index_list} into {big_bc_index}")
-        print(f"Remember to run trim_and_sum_barcodes() and set_sample_plate_map()")
-        print(f"    after all merges are completed!!!")
+        logger.info(f"Merging {small_bc_index_list} into {big_bc_index}")
+        logger.info(
+            "Remember to run trim_and_sum_barcodes() and set_sample_plate_map()"
+        )
+        logger.info("    after all merges are completed!!!")
 
         barcode_frame = self.barcode_frame.copy()
         if "was_merged" not in barcode_frame.columns:
@@ -3516,9 +3483,9 @@ class BarSeqFitnessFrame:
         x = barcode_frame["total_counts_plate_2"].values
         count_mode = stats.mode(x).mode
         count_quantile = np.quantile(x, quantile_for_qc_ratio)
-        print(f"plate 2 count mode: {count_mode}")
-        print(f"plate 2 {quantile_for_qc_ratio} quantile: {count_quantile}")
-        print(f"plate 2 QC ratio: {count_quantile/count_mode:.2f}")
+        logger.info(f"plate 2 count mode: {count_mode}")
+        logger.info(f"plate 2 {quantile_for_qc_ratio} quantile: {count_quantile}")
+        logger.info(f"plate 2 QC ratio: {count_quantile/count_mode:.2f}")
         for ax in axs.flatten():
             ax.hist(
                 barcode_frame["total_counts"],
@@ -3582,8 +3549,8 @@ class BarSeqFitnessFrame:
         for i, split_count in enumerate(np.split(r12, 4)):
             geo_std = np.exp(np.std(np.log(split_count)))
             geo_max = np.exp(np.ptp(np.log(split_count)))
-            print(f"Time point {i+1}, geometric stdev: {geo_std:.2f}-fold")
-            print(f"            maximum differnce: {geo_max:.2f}-fold")
+            logger.info(f"Time point {i+1}, geometric stdev: {geo_std:.2f}-fold")
+            logger.info(f"            maximum differnce: {geo_max:.2f}-fold")
 
         ax.scatter(index_list, r12, c=plot_colors96(), s=50)
         for i in range(13):
@@ -3722,7 +3689,7 @@ class BarSeqFitnessFrame:
 
         f_data = self.barcode_frame[self.barcode_frame["total_counts"] > count_cutoff]
         if (not includeChimeras) and ("isChimera" in f_data.columns):
-            f_data = f_data[f_data["isChimera"] == False]
+            f_data = f_data[~f_data["isChimera"]]
 
         f_x = f_data["fraction_total_p2"]
         f_x_min = f_data[f_data["fraction_total_p2"] > 0]["fraction_total_p2"].min()
@@ -3868,24 +3835,6 @@ class BarSeqFitnessFrame:
                 0.0021763030793714206,
             ]
         )
-        poisson_err_small = np.asarray(
-            [
-                0.0008661333092282185,
-                0.0009340439480853888,
-                0.0008821889073372234,
-                0.0008856945951456786,
-                0.000820757229296616,
-                0.000830315430739499,
-                0.0007963057526756344,
-                0.0007963629310250612,
-                0.000763102677224598,
-                0.0007575749124137182,
-                0.0007546065015548847,
-                0.0004797418835729835,
-                0.000596486425619687,
-                0.00042833165436399073,
-            ]
-        )
         ##############################################################################################
 
         # Plot standard deviation of barcode read fractions (across wells in time point 1) vs mean read fraction
@@ -3985,7 +3934,7 @@ class BarSeqFitnessFrame:
         ligand_list = self.ligand_list
 
         if (not includeChimeras) and ("isChimera" in barcode_frame.columns):
-            barcode_frame = barcode_frame[barcode_frame["isChimera"] == False]
+            barcode_frame = barcode_frame[~barcode_frame["isChimera"]]
 
         if include_ref_seqs:
             RS_count_frame = self.barcode_frame[self.barcode_frame["RS_name"] != ""]
@@ -4086,8 +4035,8 @@ class BarSeqFitnessFrame:
                                     if len(antibiotic_conc_list) == 2:
                                         # Single non-zero antibiotic concentration
                                         if "y_0" in stan_data:
-                                            st_y_0 = list(stan_data[f"y_0"])
-                                            st_y_0_err = list(stan_data[f"y_0_err"])
+                                            st_y_0 = list(stan_data["y_0"])
+                                            st_y_0_err = list(stan_data["y_0_err"])
                                             x = np.array(
                                                 [0] * len(st_y_0)
                                                 + list(stan_data[f"x_{j+1}"])
@@ -4110,8 +4059,8 @@ class BarSeqFitnessFrame:
                                         # Two non-zero antibiotic concentrations
                                         if tet == antibiotic_conc_list[1]:
                                             tet_str = "low"
-                                            st_y_0 = [stan_data[f"y_0_low_tet"]]
-                                            st_y_0_err = [stan_data[f"y_0_low_tet_err"]]
+                                            st_y_0 = [stan_data["y_0_low_tet"]]
+                                            st_y_0_err = [stan_data["y_0_low_tet_err"]]
                                         else:
                                             tet_str = "high"
                                             st_y_0 = []
@@ -4162,7 +4111,7 @@ class BarSeqFitnessFrame:
 
                 if initial == plot_initials[0]:
                     barcode_str = str(index) + ": "
-                    barcode_str += format(row[f"total_counts"], ",") + "; "
+                    barcode_str += format(row["total_counts"], ",") + "; "
                     barcode_str += row["RS_name"]
                     if "cytom_variant" in barcode_frame.columns:
                         barcode_str += ", " + row["cytom_variant"]
@@ -4221,9 +4170,9 @@ class BarSeqFitnessFrame:
                         c not in barcode_frame.columns
                     )
         if old_style_plots:
-            print("Using old style column headings")
+            logger.info("Using old style column headings")
         # else:
-        #    print("Using new style column headings")
+        #    logger.info("Using new style column headings")
 
         fit_plot_colors = sns.color_palette()
 
@@ -4256,13 +4205,10 @@ class BarSeqFitnessFrame:
     ):
         plot_row = self.barcode_frame.loc[plot_index]
 
-        antibiotic_conc_list = self.antibiotic_conc_list
         ligand_list = self.ligand_list
 
         plt.rcParams["figure.figsize"] = [box_size, box_size * 2 / 3]
         fig, axg = plt.subplots()
-
-        fit_fitness_difference_params = self.fit_fitness_difference_params
 
         if self.plasmid == "pVER":
             plot_initials = ["b", "e"]
@@ -4311,10 +4257,8 @@ class BarSeqFitnessFrame:
 
         fill_alpha = 0.2
 
-        tet_level_list = ["high"] if len(antibiotic_conc_list) == 2 else ["low", "high"]
         for lig, color in zip(ligand_list, fit_plot_colors):
             stan_g = 10 ** plot_row[f"GP_log_g_{lig}"]
-            stan_dg = plot_row[f"GP_dlog_g_{lig}"]
 
             df = plot_df
             df = df[(df.ligand == lig) | (df.ligand == "none")]
@@ -4394,14 +4338,11 @@ class BarSeqFitnessFrame:
             barcode_frame = self.barcode_frame.loc[plot_range[0] : plot_range[1]]
 
         if (not includeChimeras) and ("isChimera" in barcode_frame.columns):
-            barcode_frame = barcode_frame[barcode_frame["isChimera"] != True]
+            barcode_frame = barcode_frame[~barcode_frame["isChimera"]]
 
         if include_ref_seqs:
             RS_count_frame = self.barcode_frame[self.barcode_frame["RS_name"] != ""]
             barcode_frame = pd.concat([barcode_frame, RS_count_frame])
-
-        # Turn interactive plotting on or off depending on show_plots
-        plt.ion()
 
         if save_plots:
             os.chdir(self.data_directory)
@@ -4649,8 +4590,8 @@ class BarSeqFitnessFrame:
                                         # Single non-zero antibiotic concentration
                                         if "y_0" in stan_data:
                                             # case for multiple ligands
-                                            st_y_0 = list(stan_data[f"y_0"])
-                                            st_y_0_err = list(stan_data[f"y_0_err"])
+                                            st_y_0 = list(stan_data["y_0"])
+                                            st_y_0_err = list(stan_data["y_0_err"])
                                             x = np.array(
                                                 [0] * len(st_y_0)
                                                 + list(stan_data[f"x_{j+1}"])
@@ -4671,8 +4612,8 @@ class BarSeqFitnessFrame:
                                         # Two non-zero antibiotic concentrations
                                         if tet == antibiotic_conc_list[1]:
                                             tet_str = "low"
-                                            st_y_0 = [stan_data[f"y_0_low_tet"]]
-                                            st_y_0_err = [stan_data[f"y_0_low_tet_err"]]
+                                            st_y_0 = [stan_data["y_0_low_tet"]]
+                                            st_y_0_err = [stan_data["y_0_low_tet_err"]]
                                         else:
                                             tet_str = "high"
                                             st_y_0 = []
@@ -4715,7 +4656,7 @@ class BarSeqFitnessFrame:
 
                 if initial == plot_initials[0]:
                     barcode_str = str(index) + ": "
-                    barcode_str += format(row[f"total_counts"], ",") + "; "
+                    barcode_str += format(row["total_counts"], ",") + "; "
                     barcode_str += row["RS_name"]
                     if show_variant:
                         barcode_str += f", {row.variant}"
@@ -4789,9 +4730,9 @@ class BarSeqFitnessFrame:
                                     f"log_ginf_{lig}",
                                     f"log_ec50_{lig}",
                                     f"sensor_n_{lig}",
-                                    f"high_fitness",
-                                    f"mid_g",
-                                    f"fitness_n",
+                                    "high_fitness",
+                                    "mid_g",
+                                    "fitness_n",
                                 ]
                             elif self.plasmid == "pCymR":
                                 params_list = [
@@ -4799,9 +4740,9 @@ class BarSeqFitnessFrame:
                                     f"log_ginf_{lig}",
                                     f"log_ec50_{lig}",
                                     f"sensor_n_{lig}",
-                                    f"low_fitness",
-                                    f"mid_g",
-                                    f"fitness_n",
+                                    "low_fitness",
+                                    "mid_g",
+                                    "fitness_n",
                                 ]
 
                             params = [row[p] for p in params_list]
@@ -5035,8 +4976,10 @@ class BarSeqFitnessFrame:
     ):
         if spike_in_initial is None:
             spike_in_initial = self.get_default_initial()
-        spike_in = fitness.get_spike_in_name_from_inital(self.plasmid, spike_in_initial)
-        print(
+        spike_in = stan_utility.get_spike_in_name_from_inital(
+            self.plasmid, spike_in_initial
+        )
+        logger.info(
             f"Calibrating with counts normalized to {spike_in}, initial: {spike_in_initial}"
         )
         plasmid = self.plasmid
@@ -5119,9 +5062,6 @@ class BarSeqFitnessFrame:
 
         plot_df = sample_plate_map
         plot_df = plot_df[plot_df.growth_plate == 2].sort_values(by=lig_list)
-
-        x_list = np.array([np.array(plot_df[x]) for x in lig_list]).flatten()
-        linthresh = min(x_list[x_list > 0])
 
         fit_plot_colors = sns.color_palette()
 
@@ -5403,7 +5343,7 @@ class BarSeqFitnessFrame:
                                             [0, 0] + list(stan_data[f"x_{i+1}"])
                                         )
                                         samples = np.array(
-                                            list(stan_data[f"samp_0"])
+                                            list(stan_data["samp_0"])
                                             + list(stan_data[f"samp_{i+1}"])
                                         )
                                         if plot_raw_fitness:
@@ -5425,11 +5365,11 @@ class BarSeqFitnessFrame:
                                             )
                                         else:
                                             y = np.array(
-                                                list(stan_data[f"y_0"])
+                                                list(stan_data["y_0"])
                                                 + list(stan_data[f"y_{i+1}"])
                                             )
                                             y_err = np.array(
-                                                list(stan_data[f"y_0_err"])
+                                                list(stan_data["y_0_err"])
                                                 + list(stan_data[f"y_{i+1}_err"])
                                             )
 
@@ -5441,19 +5381,19 @@ class BarSeqFitnessFrame:
                                                     [0] + list(stan_data[f"x_{i+1}"])
                                                 )
                                                 samples = np.array(
-                                                    [stan_data[f"samp_0_low_tet"]]
+                                                    [stan_data["samp_0_low_tet"]]
                                                     + list(
                                                         stan_data[f"samp_{i+1}_low_tet"]
                                                     )
                                                 )
                                                 y = np.array(
-                                                    [stan_data[f"y_0_low_tet"]]
+                                                    [stan_data["y_0_low_tet"]]
                                                     + list(
                                                         stan_data[f"y_{i+1}_low_tet"]
                                                     )
                                                 )
                                                 y_err = np.array(
-                                                    [stan_data[f"y_0_low_tet_err"]]
+                                                    [stan_data["y_0_low_tet_err"]]
                                                     + list(
                                                         stan_data[
                                                             f"y_{i+1}_low_tet_err"
@@ -5464,7 +5404,7 @@ class BarSeqFitnessFrame:
                                                 lig_conc = np.array(stan_data["x"])
                                                 samples = np.array(stan_data["samp"])
                                                 y = np.array(stan_data["y"])
-                                                y_err = np.array(stan_data[f"y_err"])
+                                                y_err = np.array(stan_data["y_err"])
                                         elif tet == plot_antibiotic_list[1]:
                                             lig_conc = np.array(stan_data[f"x_{i+1}"])
                                             samples = np.array(
@@ -5505,7 +5445,7 @@ class BarSeqFitnessFrame:
                                             lig_color_conc = [0] * len(lig_conc)
 
                                     # Enforce the min_err here, just before adding the values to the y_err_list and plotting
-                                    if type(min_err) == dict:
+                                    if isinstance(min_err, dict):
                                         y_err = np.sqrt(y_err**2 + min_err[tet] ** 2)
                                     else:
                                         y_err = np.sqrt(y_err**2 + min_err**2)
@@ -5561,7 +5501,7 @@ class BarSeqFitnessFrame:
                         if plasmid == "Align-TF":
                             tf = align_tf_from_ligand(lig)
                             if ("norm" not in RS_name) and (tf in plas):
-                                print(
+                                logger.info(
                                     f"No cytometry data for {RS_name}, {plas} with {lig}"
                                 )
                     else:
@@ -5600,12 +5540,11 @@ class BarSeqFitnessFrame:
             if return_fit_data:
                 fit_data_ret.append(df_ret)
 
-            ylim = ax.get_ylim()
             ax.set_xscale("symlog")
             ax.set_xlabel("Sensor Output (MEF)")
             ax.set_title(f"{tet} {self.antibiotic}", size=14)
             if plot_raw_fitness:
-                ax.set_ylabel(f"Fitness")
+                ax.set_ylabel("Fitness")
             else:
                 ax.set_ylabel(f"Fitness Impact of {self.antibiotic}")
 
@@ -5623,13 +5562,15 @@ class BarSeqFitnessFrame:
                     lab = "fit"
                 ax.plot(x_plot_fit, y_plot_fit, "--r", zorder=100, label=lab)
 
-            print()
-            if type(min_err) == dict:
-                print(
+            logger.info()
+            if isinstance(min_err, dict):
+                logger.info(
                     f"Plotting and fitting with minimum fitness error: {min_err[tet]} for [{self.antibiotic}] = {tet}"
                 )
             else:
-                print(f"Plotting and fitting with minimum fitness error: {min_err}")
+                logger.info(
+                    f"Plotting and fitting with minimum fitness error: {min_err}"
+                )
 
             if run_stan_fit:
                 if plasmid in ["pVER", "pCymR", "Align-TF"]:
@@ -5637,7 +5578,7 @@ class BarSeqFitnessFrame:
                 elif plasmid == "pRamR":
                     key_params = ["high_level", "IC_50", "hill_n"]
 
-                print(f"Fitting with stan model from: {stan_model_file}")
+                logger.info(f"Fitting with stan model from: {stan_model_file}")
                 if turn_off_cmdstanpy_logger:
                     import logging
 
@@ -5662,14 +5603,14 @@ class BarSeqFitnessFrame:
                     ):
                         old_drop_list = drop_list
                         num_points = len(fit_data["x"])
-                        print()
-                        print(
+                        logger.info()
+                        logger.info(
                             f"Fit iteration: {run_num+1}, with {num_points} data points"
                         )
                         if len(drop_list) > 0:
-                            print("    Dropped outliers:")
+                            logger.info("    Dropped outliers:")
                             for d in drop_list:
-                                print(f"        {d}")
+                                logger.info(f"        {d}")
                         stan_fit = fitness_model.sample(
                             data=fit_data,
                             iter_warmup=500,
@@ -5680,14 +5621,14 @@ class BarSeqFitnessFrame:
                         )
 
                         if re_stan_on_rhat:
-                            print(f"    Checking r_hat...")
+                            logger.info(f"    Checking r_hat...")
                             rhat_params = stan_utility.check_rhat_by_params(
                                 stan_fit,
                                 rhat_cutoff=rhat_cutoff,
                                 stan_parameters=key_params,
                             )
                             if len(rhat_params) > 0:
-                                print(
+                                logger.info(
                                     f"    Re-running Stan fit becasue the following parameterrs had r_hat > {rhat_cutoff}: {rhat_params}"
                                 )
                                 stan_fit = fitness_model.sample(
@@ -5699,7 +5640,7 @@ class BarSeqFitnessFrame:
                                     show_progress=show_progress,
                                 )
                             else:
-                                print(
+                                logger.info(
                                     f"        ... r_hat below {rhat_cutoff} for all key parameters"
                                 )
 
@@ -5731,9 +5672,9 @@ class BarSeqFitnessFrame:
                             fit_data["nu"] = robust_nu
 
                 num_str = [f"{x:.4}" for x in stan_popt]
-                print(f"Fitness params with {tet} [{self.antibiotic}]: {num_str}")
+                logger.info(f"Fitness params with {tet} [{self.antibiotic}]: {num_str}")
                 num_str = [f"{x:.4}" for x in stan_perr]
-                print(f"                 Error estimate: {num_str}")
+                logger.info(f"                 Error estimate: {num_str}")
                 if plasmid == "Align-TF":
                     stan_params_to_save[tet] = {
                         "popt": list(stan_popt),
@@ -5746,11 +5687,11 @@ class BarSeqFitnessFrame:
                     ["Unweighted", "Weighted"], [None, 1 / y_err_list**2]
                 ):
                     rms_dev = np.sqrt(np.average(dev**2, weights=w))
-                    print(f"           {w_str} RMS deviation: {rms_dev:.4}")
+                    logger.info(f"           {w_str} RMS deviation: {rms_dev:.4}")
 
                 dev_2 = y_fit_list_2 - fit_funct(x_fit_list_2, *stan_popt)
                 rms_dev = np.sqrt(np.mean((dev_2 / y_err_list_2) ** 2))
-                print(
+                logger.info(
                     f"           Rescaled RMS deviation: {rms_dev:.4} (after dropping outliers; should be 1 for properly calibrated uncertanties)"
                 )
 
@@ -5861,7 +5802,7 @@ class BarSeqFitnessFrame:
 
         min_samples_split = 5
 
-        def model_plots(model, params, print_stats=True):
+        def model_plots(model, params):
             plt.rcParams["figure.figsize"] = [7, 3]
             fig, axs = plt.subplots(1, 2, layout="tight")
 
@@ -5890,13 +5831,13 @@ class BarSeqFitnessFrame:
                 predicted = model.predict(X)
                 actual = y
                 ax.plot(actual, predicted, "o", ms=ms, alpha=alpha, fillstyle=fillstyle)
-                if print_stats:
+                if logger.info_stats:
                     resid_test = y - model.predict(X)
                     rms_resid = np.sqrt(np.mean(resid_test**2))
-                    print(label)
-                    print(f"    {rms_resid}")
-                    print(f"    {model.score(X, y, sample_weight=w)}")
-                    print()
+                    logger.info(label)
+                    logger.info(f"    {rms_resid}")
+                    logger.info(f"    {model.score(X, y, sample_weight=w)}")
+                    logger.info()
 
             xlim = ax.get_xlim()
             ax.plot(xlim, xlim, "--k")
@@ -5924,7 +5865,7 @@ class BarSeqFitnessFrame:
         )
         ramr_model.fit(X_train, y_train, sample_weight=w_train)
 
-        fig, axs = model_plots(ramr_model, params, print_stats=True)
+        fig, axs = model_plots(ramr_model, params)
         self.ramr_fitness_correction = ramr_model
 
         if auto_save:
@@ -5937,7 +5878,6 @@ class BarSeqFitnessFrame:
         self,
         plot_range=None,
         with_tet=None,
-        mark_samples=[],
         show_spike_ins=None,
         plot_samples=None,
     ):
@@ -5947,135 +5887,6 @@ class BarSeqFitnessFrame:
             show_spike_ins=show_spike_ins,
             plot_samples=plot_samples,
         )
-
-    """ The plot_counts_vs_time() function needs to be updated or deleted. Comment it out for now.
-    def plot_counts_vs_time(self, plot_range,
-                                  with_tet=None,
-                                  mark_samples=[]):
-
-        if with_tet is None:
-            plot_tet = True
-            plot_no_tet = True
-        else:
-            plot_tet = with_tet
-            plot_no_tet = not with_tet
-
-        barcode_frame = self.barcode_frame
-        high_tet = self.high_tet
-
-        if plot_range is None:
-            plot_range = [0, max(barcode_frame.index)]
-
-        plot_count_frame = barcode_frame.loc[plot_range[0]:plot_range[1]].copy()
-        plt.rcParams["figure.figsize"] = [10,6*(len(plot_count_frame))]
-        fig, axs = plt.subplots(len(plot_count_frame), 1)
-
-        inducer_conc_list = self.inducer_conc_list
-
-        inducer = self.inducer
-
-        inducer_conc_list_in_plate = np.asarray(np.split(np.asarray(inducer_conc_list),4)).transpose().flatten().tolist()*8
-        inducer_conc_list_in_plate = np.asarray([(inducer_conc_list[j::4]*4)*2 for j in range(4)]*1).flatten()
-
-        with_tet = []
-        plate_list = []
-        for r in fitness.rows():
-            for c in fitness.columns():
-                plate_list.append( int(2+(c-1)/3) )
-                with_tet.append(r in fitness.rows()[1::2])
-
-        sample_plate_map = pd.DataFrame({"well": fitness.wells()})
-        sample_plate_map['with_tet'] = with_tet
-        sample_plate_map[inducer] = inducer_conc_list_in_plate
-        sample_plate_map['growth_plate'] = plate_list
-        sample_plate_map.set_index('well', inplace=True, drop=False)
-
-        wells_with_high_tet = []
-        wells_with_zero_tet = []
-
-        for i in range(2,6):
-            df = sample_plate_map[(sample_plate_map["with_tet"]) & (sample_plate_map["growth_plate"]==i)]
-            df = df.sort_values([inducer])
-            wells_with_high_tet.append(df["well"].values)
-            df = sample_plate_map[(sample_plate_map["with_tet"] != True) & (sample_plate_map["growth_plate"]==i)]
-            df = df.sort_values([inducer])
-            wells_with_zero_tet.append(df["well"].values)
-
-        for i in range(2,6):
-            counts_0 = []
-            counts_tet = []
-            for index, row in plot_count_frame.iterrows():
-                row_0 = row[wells_with_zero_tet[i-2]]
-                counts_0.append(row_0.values)
-                row_tet = row[wells_with_high_tet[i-2]]
-                counts_tet.append(row_tet.values)
-            plot_count_frame[f"read_count_{0}_" + str(i)] = counts_0
-            plot_count_frame[f"read_count_{high_tet}_" + str(i)] = counts_tet
-
-        x0 = [2, 3, 4, 5]
-
-        for (index, row), ax in zip(plot_count_frame.iterrows(), axs): # iterate over barcodes
-            x_mark = []
-            y_mark = []
-
-            if plot_no_tet:
-                n_reads = [ row[f'read_count_{0}_{plate_num}'] for plate_num in range(2,6) ]
-                for j in range(len(n_reads[0])): # iteration over IPTG concentrations 0-11
-                    x = []
-                    y = []
-                    s = []
-                    for i in range(len(n_reads)): # iteration over time points 0-3
-                        if n_reads[i][j]>0:
-                            x.append(x0[i])
-                            y.append(np.log10(n_reads[i][j]))
-                            s.append( (np.sqrt(1/n_reads[i][j])/np.log(10)) )
-
-                            if ("no-tet", x0[i], inducer_conc_list[j]) in mark_samples:
-                                x_mark.append(x0[i])
-                                y_mark.append(np.log10(n_reads[i][j]))
-
-                    label = inducer_conc_list[j]
-                    fillstyle = "full"
-                    ax.errorbar(x, y, s, c=plot_colors()[j], marker='o', ms=8, fillstyle=fillstyle, label=label)
-
-            if plot_tet:
-                n_reads = [ row[f'read_count_{high_tet}_{plate_num}'] for plate_num in range(2,6) ]
-                for j in range(len(n_reads[0])): # iteration over IPTG concentrations 0-11
-                    x = []
-                    y = []
-                    s = []
-                    for i in range(len(n_reads)): # iteration over time points 0-3
-                        if n_reads[i][j]>0:
-                            x.append(x0[i])
-                            y.append(np.log10(n_reads[i][j]))
-                            s.append( (np.sqrt(1/n_reads[i][j])/np.log(10)) )
-
-                            if ("tet", x0[i], inducer_conc_list[j]) in mark_samples:
-                                x_mark.append(x0[i])
-                                y_mark.append(np.log10(n_reads[i][j]))
-
-                    if plot_no_tet:
-                        label = None
-                    else:
-                        label = inducer_conc_list[j]
-                    fillstyle = "full"
-                    ax.errorbar(x, y, s, c=plot_colors()[j], marker='v', ms=8, fillstyle=fillstyle, label=label)
-
-            barcode_str = str(index) + ', '
-            barcode_str += row['RS_name'] + ": "
-            barcode_str += row['forward_BC'] + ", "
-            barcode_str += row['reverse_BC']
-            ax.text(x=0.0, y=1.05, s=barcode_str, horizontalalignment='left', verticalalignment='top',
-                    transform=ax.transAxes, fontsize=10, fontfamily="Courier New")
-            ax.set_xlabel('Plate Number', size=16)
-            ax.set_ylabel('Log10(count)', size=16)
-            ax.set_xticks([2, 3, 4, 5])
-            leg = ax.legend(loc='lower left', bbox_to_anchor= (1.03, 0.07), ncol=3, borderaxespad=0, frameon=True, fontsize=10)
-            leg.get_frame().set_edgecolor('k');
-
-            ax.plot(x_mark, y_mark, c='k', marker='o', ms=18, fillstyle="none", markeredgewidth=3, zorder=1000, linestyle="none")
-
-    """
 
     def plot_chimera_plot(
         self,
@@ -6124,12 +5935,6 @@ class BarSeqFitnessFrame:
                 alpha=chimera_alpha,
                 label="Actual Chimeras, Total Counts ÷ 96",
             )
-
-        if ("parent_geo_mean_p2" in barcode_frame.columns) or (
-            "isChimera" in barcode_frame.columns
-        ):
-            leg = axs.legend(loc="upper left", bbox_to_anchor=(1.03, 0.97), ncol=1)
-            # leg.get_frame().set_edgecolor('k');
 
         axs.set_xscale("log")
         axs.set_yscale("log")
@@ -6180,7 +5985,7 @@ class BarSeqFitnessFrame:
         axs = axs_grid.flatten()
 
         y_label_list = ["G0", "Ginf", "Ginf/G0", "n"]
-        x_label_list = [f"EC50"] * len(y_label_list)
+        x_label_list = ["EC50"] * len(y_label_list)
         if ligand is None:
             lig_str = ""
         else:
@@ -6207,8 +6012,8 @@ class BarSeqFitnessFrame:
                 "log_high_low_ratio",
                 "log_n",
             ]
-            x_param_list = [f"log_ic50"] * len(param_names)
-            x_err_label_list = [f"log_ic50 error"] * len(param_names)
+            x_param_list = ["log_ic50"] * len(param_names)
+            x_err_label_list = ["log_ic50 error"] * len(param_names)
 
         # This part plots the input input_frames
         for input_frame, c, lab in zip(input_frames, in_colors, in_labels):
@@ -6272,8 +6077,6 @@ class BarSeqFitnessFrame:
                 y = params_y
 
             ax.set_xscale("log")
-            xlim = ax.get_xlim()
-            ylim = ax.get_ylim()
             ax.plot(
                 x,
                 y,
@@ -6302,15 +6105,11 @@ class BarSeqFitnessFrame:
                 fontsize=12,
             )
             leg.get_frame().set_edgecolor("k")
-        y_max = axs[3].get_ylim()[1]
-        # axs[0].set_ylim(-500, 3000);
-        # axs[1].set_ylim(0.5, 2.75);
+
         ylim2 = axs[0].get_ylim()
         ylim3 = axs[1].get_ylim()
         axs[0].set_ylim(min(ylim2[0], ylim3[0]), max(ylim2[1], ylim3[1]))
         axs[1].set_ylim(min(ylim2[0], ylim3[0]), max(ylim2[1], ylim3[1]))
-        # for ax in axs:
-        #    ax.set_xlim(6,1000);
 
         return axs
 
@@ -6339,15 +6138,15 @@ class BarSeqFitnessFrame:
                 "_BarSeqFitnessFrame.pkl", f"_BSF_{t}.pkl"
             )
             os.rename(pickle_file, old_pickle_file)
-            print(
+            logger.info(
                 f"Previous version of BarSeqFitnessFrame renamed as: {old_pickle_file}"
             )
 
         with open(pickle_file, "wb") as f:
             pickle.dump(self, f)
-        print(f"BarSeqFitnessFrame saved as: {pickle_file}")
+        logger.info(f"BarSeqFitnessFrame saved as: {pickle_file}")
         now = datetime.datetime.now()
-        print(now)
+        logger.info(now)
 
     def cleaned_frame(
         self,
@@ -6384,7 +6183,7 @@ class BarSeqFitnessFrame:
                 exclude_mut_regions = []
 
         if len(exclude_mut_regions) > 0:
-            print(
+            logger.info(
                 f"excluding the following regions with mutations: {exclude_mut_regions}"
             )
 
@@ -6583,7 +6382,7 @@ class BarSeqFitnessFrame:
                         samples.append(df.iloc[0]["sample_id"])
                     else:
                         raise ValueError(
-                            f"Unexpected DataFrame length in bs_frame_stan_data()"
+                            "Unexpected DataFrame length in bs_frame_stan_data()"
                         )
 
                 # Reference sample has zero antibiotic:
@@ -6718,7 +6517,7 @@ class BarSeqFitnessFrame:
         )
         ramr_resid_frame = getattr(self, "ramr_resid_frame", None)
 
-        stan_data = get_stan_data(
+        stan_data = stan_utility.get_stan_data(
             st_row=st_row,
             plot_df=plot_df,
             antibiotic_conc_list=antibiotic_conc_list,
@@ -7025,333 +6824,6 @@ def log_level(fitness_difference, plasmid="pVER"):
         if log_g > np.log10(300):
             log_g = np.log10(300)
         return log_g
-
-
-def get_stan_data(
-    st_row,
-    plot_df,
-    antibiotic_conc_list,
-    lig_list,
-    fit_fitness_difference_params,
-    old_style_columns=False,
-    initial="b",
-    plasmid="pVER",
-    is_gp_model=False,
-    min_err=0.05,
-    ref_samples=None,
-    apply_ramr_correction=True,
-    ramr_fitness_correction=None,
-    ramr_fitness_correction_params=None,
-    ramr_resid_frame=None,
-):
-    log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf = fitness.log_g_limits(
-        plasmid=plasmid
-    )
-
-    antibiotic_conc_list = np.array(antibiotic_conc_list)
-
-    spike_in = fitness.get_spike_in_name_from_inital(plasmid, initial)
-
-    if old_style_columns:
-        high_tet = antibiotic_conc_list[1]
-
-        y_zero = st_row[f"fitness_{0}_estimate_{initial}"]
-        s_zero = st_row[f"fitness_{0}_err_{initial}"]
-        y_high = st_row[f"fitness_{high_tet}_estimate_{initial}"]
-        s_high = st_row[f"fitness_{high_tet}_err_{initial}"]
-
-        y = (y_high - y_zero) / y_zero
-        s = np.sqrt(s_high**2 + s_zero**2) / y_zero
-
-        x_fit = x
-        x_y_s_list = [[x_fit, y, s]]
-    else:
-        y = [st_row[f"fitness_S{i}_{initial}"] for i in ref_samples]
-        s = [st_row[f"fitness_S{i}_err_{initial}"] for i in ref_samples]
-        y_ref_list = np.array(y)
-        s_ref_list = np.array(s)
-
-        sel = ~np.isnan(y_ref_list)
-        if len(sel[sel]) > 0:
-            y_ref_list = y_ref_list[sel]
-            s_ref_list = s_ref_list[sel]
-
-        w = 1 / s_ref_list**2
-        y_ref = np.average(y_ref_list, weights=w)
-        s_ref = np.average((y_ref_list - y_ref) ** 2, weights=w)
-        v_1 = np.sum(w)
-        v_2 = np.sum(w**2)
-        s_ref = np.sqrt(s_ref / (1 - (v_2 / v_1**2)))
-
-        tet_list = antibiotic_conc_list[antibiotic_conc_list > 0]
-        x_y_s_list = []
-        for lig in lig_list:
-            sub_list = []
-            for tet in tet_list:
-                df = plot_df
-                df = df[(df.ligand == lig) | (df.ligand == "none")]
-                df = df[df.antibiotic_conc == tet]
-                df = df.sort_values(by=lig)
-                x = np.array(df[lig])
-                samples = np.array(df.sample_id)
-                # Correction factor for non-constant ref fitness (i.e., fitness decreases with [ligand]
-                ref_correction = np.array(
-                    [
-                        fitness.ref_fit_correction(
-                            z, plasmid, ligand=lig, spike_in=spike_in
-                        )
-                        for z in x
-                    ]
-                )
-                y = np.array([st_row[f"fitness_S{i}_{initial}"] for i in df.sample_id])
-                raw_fitness = y.copy()
-                s = np.array(
-                    [st_row[f"fitness_S{i}_err_{initial}"] for i in df.sample_id]
-                )
-
-                if plasmid in ["pVER", "pCymR"]:
-                    y = (y - y_ref * ref_correction) / (y_ref * ref_correction)
-                    s = np.sqrt(s**2 + (s_ref * ref_correction) ** 2) / (
-                        y_ref * ref_correction
-                    )
-                if plasmid == "pRamR":
-                    y = (y - y_ref) / (y_ref * ref_correction)
-                    s = np.sqrt(s**2 + s_ref**2) / (y_ref * ref_correction)
-                    early_fitness = np.array(
-                        [st_row[f"fitness_S{i}_ea.{initial}"] for i in df.sample_id]
-                    )
-
-                    # Ligand effects on fitness make the measurements at the highest concentration less reliable
-                    s[x >= 500] *= 2
-
-                    if apply_ramr_correction:
-                        # Calibration correction for RamR system
-                        ramr_model = ramr_fitness_correction
-                        if ramr_model is None:
-                            raise Exception(
-                                "RamR calibration correction model (ramr_fitness_correction) is None"
-                            )
-
-                        params = ramr_fitness_correction_params
-                        if ramr_model is None:
-                            raise Exception(
-                                "RamR calibration correction parameters (ramr_fitness_correction_params) is None"
-                            )
-
-                        df = df.copy()
-                        df["lig_conc"] = x
-                        df["fitness_effect"] = y
-                        df["ref_fitness"] = [y_ref] * len(x)
-                        df["early_fitness"] = np.array(
-                            [st_row[f"fitness_S{i}_ea.{initial}"] for i in df.sample_id]
-                        )
-
-                        X_test = df[params]
-                        X_test = X_test.dropna()
-
-                        y_corr = ramr_model.predict(X_test)
-                        y = y - y_corr
-
-                s = np.sqrt(s**2 + min_err**2)
-
-                if is_gp_model:
-                    # For GP model, can't have missing data. So, if either y or s is nan, replace with values that won't affect GP model results (i.e. s=100)
-                    invalid = np.isnan(y) | np.isnan(s)
-                    if len(tet_list) == 1:
-                        middle_fitness = fit_fitness_difference_params[0][0] / 2
-                    elif len(tet_list) == 2:
-                        middle_fitness = (
-                            fit_fitness_difference_params[0][0]
-                            + fit_fitness_difference_params[1][0]
-                        ) / 4
-                    y[invalid] = middle_fitness
-                    s[invalid] = 100
-                else:
-                    valid = ~(np.isnan(y) | np.isnan(s))
-                    x = x[valid]
-                    y = y[valid]
-                    s = s[valid]
-                    samples = samples[valid]
-
-                sub_list.append([x, y, s, samples])
-            x_y_s_list.append(sub_list)
-
-        if len(lig_list) == 1:
-            # Case for single ligand and single antibiotic concentration
-            if fit_fitness_difference_params is None:
-                fit_fitness_difference_params = np.full((1, 6), np.nan)
-
-            low_fitness = fit_fitness_difference_params[0][0]
-            mid_g = fit_fitness_difference_params[0][1]
-            fitness_n = fit_fitness_difference_params[0][2]
-
-            x = x_y_s_list[0][0][0]
-            y = x_y_s_list[0][0][1]
-            y_err = x_y_s_list[0][0][2]
-            samp = x_y_s_list[0][0][3]
-
-            stan_data = dict(
-                x=x,
-                y=y,
-                N=len(y),
-                y_err=y_err,
-                low_fitness_mu=low_fitness,
-                mid_g_mu=mid_g,
-                fitness_n_mu=fitness_n,
-                log_g_min=log_g_min,
-                log_g_max=log_g_max,
-                log_g_prior_scale=log_g_prior_scale,
-                y_ref=y_ref,
-                samp=samp,
-            )
-
-        elif (len(lig_list) == 2) and (len(tet_list) == 2):
-            # Case for two-tet, two-ligand (e.g., LacI with high and low tet)
-            if fit_fitness_difference_params is None:
-                fit_fitness_difference_params = np.full((2, 6), np.nan)
-
-            y_0_med = x_y_s_list[0][0][1][0]
-            s_0_med = x_y_s_list[0][0][2][0]
-            samp_0_med = x_y_s_list[0][0][3][0]
-
-            x_1 = x_y_s_list[0][0][0]
-            y_1_med = x_y_s_list[0][0][1]
-            s_1_med = x_y_s_list[0][0][2]
-            samp_1_med = x_y_s_list[0][0][3]
-            y_1_med = y_1_med[x_1 > 0]
-            s_1_med = s_1_med[x_1 > 0]
-            samp_1_med = samp_1_med[x_1 > 0]
-            x_1 = x_1[x_1 > 0]
-
-            x_1_high = x_y_s_list[0][1][0]
-            y_1_high = x_y_s_list[0][1][1]
-            s_1_high = x_y_s_list[0][1][2]
-            samp_1_high = x_y_s_list[0][1][3]
-            y_1_high = y_1_high[x_1_high > 0]
-            s_1_high = s_1_high[x_1_high > 0]
-            samp_1_high = samp_1_high[x_1_high > 0]
-            x_1_high = x_1_high[x_1_high > 0]
-
-            x_2 = x_y_s_list[1][0][0]
-            y_2_med = x_y_s_list[1][0][1]
-            s_2_med = x_y_s_list[1][0][2]
-            samp_2_med = x_y_s_list[1][0][3]
-            y_2_med = y_2_med[x_2 > 0]
-            s_2_med = s_2_med[x_2 > 0]
-            samp_2_med = samp_2_med[x_2 > 0]
-            x_2 = x_2[x_2 > 0]
-
-            x_2_high = x_y_s_list[1][1][0]
-            y_2_high = x_y_s_list[1][1][1]
-            s_2_high = x_y_s_list[1][1][2]
-            samp_2_high = x_y_s_list[1][1][3]
-            y_2_high = y_2_high[x_2_high > 0]
-            s_2_high = s_2_high[x_2_high > 0]
-            samp_2_high = samp_2_high[x_2_high > 0]
-            x_2_high = x_2_high[x_2_high > 0]
-
-            stan_data = dict(
-                N_lig=len(x_1),
-                x_1=x_1,
-                x_2=x_2,
-                y_0_low_tet=y_0_med,
-                y_0_low_tet_err=s_0_med,
-                y_1_low_tet=y_1_med,
-                y_1_low_tet_err=s_1_med,
-                y_2_low_tet=y_2_med,
-                y_2_low_tet_err=s_2_med,
-                y_1_high_tet=y_1_high,
-                y_1_high_tet_err=s_1_high,
-                y_2_high_tet=y_2_high,
-                y_2_high_tet_err=s_2_high,
-                log_g_min=log_g_min,
-                log_g_max=log_g_max,
-                log_g_prior_scale=log_g_prior_scale,
-                low_fitness_mu_low_tet=fit_fitness_difference_params[0][0],
-                mid_g_mu_low_tet=fit_fitness_difference_params[0][1],
-                fitness_n_mu_low_tet=fit_fitness_difference_params[0][2],
-                low_fitness_std_low_tet=fit_fitness_difference_params[0][3],
-                mid_g_std_low_tet=fit_fitness_difference_params[0][4],
-                fitness_n_std_low_tet=fit_fitness_difference_params[0][5],
-                low_fitness_mu_high_tet=fit_fitness_difference_params[1][0],
-                mid_g_mu_high_tet=fit_fitness_difference_params[1][1],
-                fitness_n_mu_high_tet=fit_fitness_difference_params[1][2],
-                low_fitness_std_high_tet=fit_fitness_difference_params[1][3],
-                mid_g_std_high_tet=fit_fitness_difference_params[1][4],
-                fitness_n_std_high_tet=fit_fitness_difference_params[1][5],
-                y_ref=y_ref,
-                samp_0_low_tet=samp_0_med,
-                samp_1_low_tet=samp_1_med,
-                samp_2_low_tet=samp_2_med,
-                samp_1_high_tet=samp_1_high,
-                samp_2_high_tet=samp_2_high,
-            )
-
-        elif (len(lig_list) == 3) and (len(tet_list) == 1):
-            # Case for three-ligand experiment (e.g., RamR)
-            # x_y_s_list: 1st index is the ligand (0, 1, or 2)
-            #             2nd index is the antibiotic concentration (always 0 here)
-            #             3rd index is 0 for x, 1 for y, 2 for s
-            #             4th index is for individual data points
-            if fit_fitness_difference_params is None:
-                fit_fitness_difference_params = np.full((1, 6), np.nan)
-
-            x_1, y_1, s_1, samp_1 = tuple(x_y_s_list[0][0][n] for n in range(4))
-            y_0 = y_1[x_1 == 0]
-            s_0 = s_1[x_1 == 0]
-            samp_0 = samp_1[x_1 == 0]
-
-            y_1 = y_1[x_1 > 0]
-            s_1 = s_1[x_1 > 0]
-            samp_1 = samp_1[x_1 > 0]
-            x_1 = x_1[x_1 > 0]
-
-            x_2, y_2, s_2, samp_2 = tuple(x_y_s_list[1][0][n] for n in range(4))
-            y_2 = y_2[x_2 > 0]
-            s_2 = s_2[x_2 > 0]
-            samp_2 = samp_2[x_2 > 0]
-            x_2 = x_2[x_2 > 0]
-
-            x_3, y_3, s_3, samp_3 = tuple(x_y_s_list[2][0][n] for n in range(4))
-            y_3 = y_3[x_3 > 0]
-            s_3 = s_3[x_3 > 0]
-            samp_3 = samp_3[x_3 > 0]
-            x_3 = x_3[x_3 > 0]
-
-            stan_data = dict(
-                N_lig=len(x_1),
-                y_0=y_0,
-                y_0_err=s_0,
-                x_1=x_1,
-                y_1=y_1,
-                y_1_err=s_1,
-                x_2=x_2,
-                y_2=y_2,
-                y_2_err=s_2,
-                x_3=x_3,
-                y_3=y_3,
-                y_3_err=s_3,
-                samp_0=samp_0,
-                samp_1=samp_1,
-                samp_2=samp_2,
-                samp_3=samp_3,
-                log_g_min=log_g_min,
-                log_g_max=log_g_max,
-                log_g_prior_scale=log_g_prior_scale,
-                mid_g_mu=fit_fitness_difference_params[0][1],
-                fitness_n_mu=fit_fitness_difference_params[0][2],
-                mid_g_std=fit_fitness_difference_params[0][4],
-                fitness_n_std=fit_fitness_difference_params[0][5],
-                y_ref=y_ref,
-            )
-            if plasmid == "pRamR":
-                stan_data["high_fitness_mu"] = fit_fitness_difference_params[0][0]
-                stan_data["high_fitness_std"] = fit_fitness_difference_params[0][3]
-            else:
-                stan_data["low_fitness_mu"] = fit_fitness_difference_params[0][0]
-                stan_data["low_fitness_std"] = fit_fitness_difference_params[0][3]
-
-    return stan_data
 
 
 def align_tf_from_ligand(lig):

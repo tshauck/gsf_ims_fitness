@@ -17,22 +17,15 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
 from scipy.interpolate import interpn
-# from scipy import special
-# from scipy import misc
 
-# import pystan
 import pickle
 
 import seaborn as sns
-
-sns.set()
 import palettable
-import cmocean
 
-# from IPython.display import display
+import logging
 
-# import ipywidgets as widgets
-# from ipywidgets import interact#, interact_manual
+logger = logging.getLogger(__name__)
 
 
 def get_sample_plate_map(
@@ -42,13 +35,6 @@ def get_sample_plate_map(
     tet_conc_list=None,
     plasmid=None,
 ):
-    print(
-        f"Running get_sample_plate_map() with inducer_conc_lists: {inducer_conc_lists}"
-    )
-    print(
-        f"                               and  growth_plate_layout_file: {growth_plate_layout_file}"
-    )
-
     """
     This method returns a dataframe that has the growth conditions for each well in the BarSeq output plate.
     The method uses information from the growth_plate_layout_file if that parameter is not None. Otherwise, it uses the other parameters.
@@ -84,6 +70,13 @@ def get_sample_plate_map(
     sample_plate_map : Pandas.DataFrame
         A dataframe with the growth conditions for each well in the BarSeq output plate
     """
+    logger.info(
+        f"Running get_sample_plate_map() with inducer_conc_lists: {inducer_conc_lists}"
+    )
+    logger.info(
+        f"                               and  growth_plate_layout_file: {growth_plate_layout_file}"
+    )
+
     if growth_plate_layout_file is None:
         antibiotic = None
         inducer = inducer_list[0]
@@ -91,7 +84,7 @@ def get_sample_plate_map(
 
         if (len(inducer_list) == 1) and (len(tet_conc_list) == 2):
             # This handles the case for the original plate layout, with 12 inducer concentrations, each measured with and without antibiotic
-            msg = f"Code for defining the plate layout without growth_plate_layout_file is not yet properly implemented for the plate layout, with 12 inducer concentrations, each measured with and without antibiotic. Use a growth_plate_layout_file to auatomatically define the plate layout, or update/fix the code."
+            msg = "Code for defining the plate layout without growth_plate_layout_file is not yet properly implemented for the plate layout, with 12 inducer concentrations, each measured with and without antibiotic. Use a growth_plate_layout_file to auatomatically define the plate layout, or update/fix the code."
             raise NotImplementedError(msg)
             if inducer_conc_list[0] != 0:
                 inducer_conc_list = [0] + list(inducer_conc_list)
@@ -339,14 +332,16 @@ def get_sample_plate_map(
         # sample_plate_map.set_index('well', inplace=True, drop=False)
 
     else:
-        print(f"Automatically importing layout info from {growth_plate_layout_file}")
-        print()
+        logger.info(
+            f"Automatically importing layout info from {growth_plate_layout_file}"
+        )
+        logger.info()
 
         gp_frame = pd.read_csv(growth_plate_layout_file)
         df = gp_frame
         df = df[[type(x) is str for x in df.inducerUnits]]
         if len(df) > 0:
-            print(f"input inducer units: {np.unique(df.inducerUnits)}")
+            logger.info(f"input inducer units: {np.unique(df.inducerUnits)}")
             if "mmol/L" in np.unique(df.inducerUnits):
                 if "umol/L" in np.unique(df.inducerUnits):
                     raise ValueError(
@@ -356,9 +351,9 @@ def get_sample_plate_map(
                 gp_frame["inducerConcentration"] = (
                     gp_frame["inducerConcentration"] * 1000
                 )
-                print(f"change to inducer units: umol/L")
+                logger.info("change to inducer units: umol/L")
         else:
-            print("Warning: No inducer units found!")
+            logger.info("Warning: No inducer units found!")
 
         antibiotic = list(np.unique(gp_frame.selectorId))
         if "none" in antibiotic:
@@ -458,86 +453,6 @@ def growth_plate_well_from_barseq_well(bs_w):
     return f"{gp_row}{gp_col}"
 
 
-def bar_seq_threshold_plot(
-    notebook_dir,
-    experiment=None,
-    save_plots=False,
-    cutoff=None,
-    hist_bin_max=None,
-    num_bins=50,
-    barcode_file=None,
-):
-    # Turn interactive plotting on or off depending on show_plots
-    plt.ion()
-
-    if save_plots:
-        pdf_file = "barcode histogram plot.pdf"
-        pdf = PdfPages(pdf_file)
-
-    # os.chdir(notebook_dir)
-
-    if experiment is None:
-        experiment = get_exp_id(notebook_dir)
-
-    print(
-        f"Importing BarSeq count data and plotting histogram for thresholding for experiment: {experiment}"
-    )
-
-    data_directory = notebook_dir + "\\barcode_analysis"
-    os.chdir(data_directory)
-
-    if barcode_file is None:
-        barcode_file = glob.glob("*.sorted_counts.csv")[0]
-
-    print(f"Importing BarSeq count data from file: {barcode_file}")
-    barcode_frame_0 = pd.read_csv(barcode_file, skipinitialspace=True)
-
-    barcode_frame_0.sort_values("total_counts", ascending=False, inplace=True)
-    barcode_frame_0.reset_index(drop=True, inplace=True)
-
-    if hist_bin_max is None:
-        hist_bin_max = barcode_frame_0[
-            int(len(barcode_frame_0) / 50) : int(len(barcode_frame_0) / 50) + 1
-        ]["total_counts"].values[0]
-
-    # Allow user to replot with different hist_bin_max
-    interact_hist = interact.options(manual=True, manual_name="(re)plot histogram")
-
-    @interact_hist()
-    def plot_histogram(hist_max=str(hist_bin_max)):
-        # Plot histogram of Barcode counts to enable decision about threshold
-
-        plt.rcParams["figure.figsize"] = [16, 8]
-        fig, axs = plt.subplots(1, 2)
-        try:
-            hist_bin_max = float(hist_max)
-            bins = np.linspace(-0.5, hist_bin_max + 0.5, num_bins)
-            for ax in axs.flatten():
-                ax.hist(barcode_frame_0["total_counts"], bins=bins)
-                ax.set_xlabel("Barcode Count", size=20)
-                ax.set_ylabel("Number of Barcodes", size=20)
-                ax.tick_params(labelsize=16)
-            axs[0].hist(
-                barcode_frame_0["total_counts"],
-                bins=bins,
-                histtype="step",
-                cumulative=-1,
-            )
-            axs[0].set_yscale("log")
-            axs[1].set_yscale("log")
-            axs[1].set_xlim(0, hist_bin_max / 3)
-        except:
-            print("hist_max needs to be a number")
-
-    if save_plots:
-        pdf.savefig()
-
-    if save_plots:
-        pdf.close()
-
-    return barcode_frame_0
-
-
 def total_plate_2_and_plot_bar_seq_quality(
     barcode_frame,
     notebook_dir,
@@ -587,7 +502,7 @@ def total_plate_2_and_plot_bar_seq_quality(
             int(len(barcode_frame) / 50) : int(len(barcode_frame) / 50) + 1
         ]["total_counts"].values[0]
         cutoff = int(hist_bin_max / 10)
-    print(f"Barcode frequency cutoff: {cutoff}")
+    logger.info(f"Barcode frequency cutoff: {cutoff}")
 
     # drop_list = list(barcode_frame[barcode_frame["total_counts"]<cutoff].index)
     # barcode_frame.drop(drop_list, inplace=True)
@@ -597,7 +512,7 @@ def total_plate_2_and_plot_bar_seq_quality(
     if export_trimmed_file:
         if trimmed_export_file is None:
             trimmed_export_file = f"{experiment}.trimmed_sorted_counts.csv"
-        print(f"Exporting trimmed barcode counts data to: {trimmed_export_file}")
+        logger.info(f"Exporting trimmed barcode counts data to: {trimmed_export_file}")
         barcode_frame.to_csv(trimmed_export_file)
 
     for w in wells():
@@ -679,11 +594,11 @@ def total_plate_2_and_plot_bar_seq_quality(
             display(display_frame)
 
         total_reads = barcode_frame["total_counts"].sum()
-        print(f"total reads: {total_reads}")
+        logger.info(f"total reads: {total_reads}")
         total_RS_reads = barcode_frame[barcode_frame["RS_name"] != ""][
             "total_counts"
         ].sum()
-        print(f"reference sequence reads: {total_RS_reads}")
+        logger.info(f"reference sequence reads: {total_RS_reads}")
 
     total = []
     for index, row in barcode_frame[wells_by_column()[:24]].iterrows():
@@ -1026,7 +941,7 @@ def fit_barcode_fitness(
     if experiment is None:
         experiment = get_exp_id(notebook_dir)
 
-    print(
+    logger.info(
         f"Fitting to log(barcode ratios) to find fitness for each barcode in {experiment}"
     )
 
@@ -1075,8 +990,7 @@ def fit_barcode_fitness(
         df = df.sort_values(["IPTG"])
         wells_with_tet.append(df["well"].values)
         df = sample_plate_map[
-            (sample_plate_map["with_tet"] != True)
-            & (sample_plate_map["growth_plate"] == i)
+            ~sample_plate_map["with_tet"] & (sample_plate_map["growth_plate"] == i)
         ]
         df = df.sort_values(["IPTG"])
         wells_without_tet.append(df["well"].values)
@@ -1391,7 +1305,7 @@ def levenshtein_distance(seq1, seq2):
                 matrix[x, y] = min(
                     matrix[x - 1, y] + 1, matrix[x - 1, y - 1] + 1, matrix[x, y - 1] + 1
                 )
-    # print (matrix)
+    # logger.info (matrix)
     return int(matrix[size_x - 1, size_y - 1])
 
 
@@ -1460,288 +1374,6 @@ def gray_out(color, s_factor=0.5, v_factor=1):
     return colors.hsv_to_rgb(hsv_color)
 
 
-def fitness_calibration_dict(plasmid="pVER", barseq_directory=None, is_on_aws=False):
-    # Dictionary of dictionaries of 2-tuple of functions
-    #     first key is antibiotic concentration
-    #     second key is spike-in name
-    #     each function has two arguments: the ligand and the ligand concentration
-    #         return from function is 2-tuple: (spike-in fitness, uncertainty of spike-in fitness)
-    # ***** units for fitness values are 10-fold per plate. *****
-    #         So, fitness=1 means that the cells grow 10-fold over the time for one plate repeate cycle
-
-    spike_in_fitness_dict = {}
-    if plasmid == "pVER":
-        tet_list = [0, 1.25, 10, 20]
-        # Fitness for 0, 1.25 and 10 are from 2022-11-22_two-lig_two-sel_OD-test-5-plates,
-        # Fitness for 20 is from 2019 data, rescaled to match older zero-tet from 2022-11-22
-        # TODO: move fitness values for spike-ins to somewhere else (not hard coded)
-        # old: fitness_dicts = [{"AO-B": 0.9637, "AO-E": 0.9666}, {"AO-B": 0.9587125, "AO-E": 0.9597825},
-        # old:                  {"AO-B": 0.93045, "AO-E": 0.92115}, {"AO-B": 0.8972, "AO-E": 0.8757}]
-
-        fitness_dicts = [
-            {"AO-B": 0.9288, "AO-E": 0.9282},
-            {"AO-B": 0.9199, "AO-E": 0.9244},
-            {"AO-B": 0.9063, "AO-E": 0.9014},
-            {"AO-B": 0.8972 * 0.9288 / 0.9637, "AO-E": 0.8757 * 0.9282 / 0.9666},
-        ]
-
-        # Tet = 0, "AO-B":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.92379, 0.00168)
-            if lig == "ONPF":
-                return (
-                    0.92379 * (1 - 0.02933 * conc / 2000),
-                    0.00168 + 0.00378 * conc / 2000,
-                )
-
-        dict_list = [{"AO-B": fit_function}]
-
-        # Tet = 1.25, "AO-B":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.91817, 0.00232)
-            if lig == "ONPF":
-                return (
-                    0.91817 * (1 - 0.02933 * conc / 2000),
-                    0.00232 + 0.00314 * conc / 2000,
-                )
-
-        dict_list += [{"AO-B": fit_function}]
-
-        # Tet = 10, "AO-B":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.90297, 0.00262)
-            if lig == "ONPF":
-                return (
-                    0.90297 * (1 - 0.02202 * conc / 2000),
-                    0.00262 + 0.00314 * conc / 2000,
-                )
-
-        dict_list += [{"AO-B": fit_function}]
-
-        # Tet = 20, "AO-B":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.8972 * 0.9288 / 0.9637, 0.005)
-            if lig == "ONPF":
-                return (np.nan, np.nan)
-
-        dict_list += [{"AO-B": fit_function}]
-
-        # Tet = 0, "AO-E":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.92789, 0.00165)
-            if lig == "ONPF":
-                return (
-                    0.92789 * (1 - 0.03881 * conc / 2000),
-                    0.00165 + 0.00367 * conc / 2000,
-                )
-
-        dict_list[0]["AO-E"] = fit_function
-
-        # Tet = 1.25, "AO-E":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.92518, 0.00225)
-            if lig == "ONPF":
-                return (
-                    0.92518 * (1 - 0.03881 * conc / 2000),
-                    0.00225 + 0.00307 * conc / 2000,
-                )
-
-        dict_list[1]["AO-E"] = fit_function
-
-        # Tet = 10, "AO-E":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.89910, 0.00263)
-            if lig == "ONPF":
-                return (
-                    0.89910 * (1 - 0.01583 * conc / 2000),
-                    0.00263 + 0.00286 * conc / 2000,
-                )
-
-        dict_list[2]["AO-E"] = fit_function
-
-        # Tet = 20, "AO-E":
-        def fit_function(lig, conc):
-            if (lig == "IPTG") or (lig == "none"):
-                return (0.8757 * 0.9282 / 0.9666, 0.005)
-            if lig == "ONPF":
-                return (np.nan, np.nan)
-
-        dict_list[3]["AO-E"] = fit_function
-
-        for t, d in zip(tet_list, dict_list):
-            spike_in_fitness_dict[t] = d
-
-    elif plasmid == "pCymR":
-        tet_list = [0, 5]
-        # Fitness for 0, and 5 Tet are indistinguishable in plate reader data.
-        #     results are from 2023-11-17_Per-OH_OD-test-5-plates
-        # AO-09 looks like a decent always-on, but AO-10 looks like it is actaully an inverted sensor,
-        #     so use RS-20 instead, which is an always-on phenotype
-        # TODO: move fitness values for spike-ins to somewhere else (not hard coded)
-
-        # Tet = 0, "AO-09":
-        def fit_function(lig, conc):
-            # fitness is quadratic in Per-OH concentration (and uncertainty is also approximately quadratic
-            fitness_popt = [
-                0.96023440345,
-                -0.0006537943555499999,
-                -1.2593978344390849e-06,
-            ]
-            uncertainty_popt = [3.57965178e-03, -3.62885112e-06, 3.26292766e-07]
-            if lig == "Per-OH":
-                fit_ret = (
-                    fitness_popt[0] + fitness_popt[1] * conc + fitness_popt[2] * conc**2
-                )
-                fit_ret_err = (
-                    uncertainty_popt[0]
-                    + uncertainty_popt[1] * conc
-                    + uncertainty_popt[2] * conc**2
-                )
-                return (fit_ret, fit_ret_err)
-            else:
-                return (fitness_popt[0], uncertainty_popt[0])
-
-        dict_list = [{"AO-09": fit_function}]
-
-        # Tet = 5, "AO-09":
-        # No measureable difference between with and without Tet
-        dict_list += [{"AO-09": fit_function}]
-
-        # Tet = 0, "RS-20":
-        def fit_function(lig, conc):
-            # fitness is quadratic in Per-OH concentration (and uncertainty is also approximately quadratic
-            fitness_popt = [0.96257526335, -0.00073499716683, -4.774547993411e-07]
-            uncertainty_popt = [4.79398178e-03, 1.67402328e-05, 2.73392737e-07]
-            if lig == "Per-OH":
-                fit_ret = (
-                    fitness_popt[0] + fitness_popt[1] * conc + fitness_popt[2] * conc**2
-                )
-                fit_ret_err = (
-                    uncertainty_popt[0]
-                    + uncertainty_popt[1] * conc
-                    + uncertainty_popt[2] * conc**2
-                )
-                return (fit_ret, fit_ret_err)
-            else:
-                return (fitness_popt[0], uncertainty_popt[0])
-
-        dict_list[0]["RS-20"] = fit_function
-
-        # Tet = 5, "RS-20":
-        # No measureable difference between with and without Tet
-        dict_list[1]["RS-20"] = fit_function
-
-        for t, d in zip(tet_list, dict_list):
-            spike_in_fitness_dict[t] = d
-
-    elif plasmid == "pRamR":
-        zeo_list = [0, 200]
-        # Fitness interpolating functions are from data with Hamilton programming error (mixed up some of the Tet vs. non-Tet wells).
-        #     Based on sucessful results (quantitative comparison between BarSeq and cytometry dose-response curves), it doesn't matter.
-        #     Probably because the always-on controls here express the Zeo resistance at a high level so they have the same growth rate for all Zeo concentrations used.
-        return_directory = os.getcwd()
-        if not is_on_aws:
-            fitness_exp_id = "2023-01-27_three_inducers_OD-test-5-plates"
-            os.chdir(barseq_directory)
-            direct = os.getcwd()
-            while direct[-4:] != "RamR":
-                os.chdir("..")
-                direct = os.getcwd()
-            os.chdir(fitness_exp_id)
-
-        fit_files = glob.glob("fitness_vs_ligand_pRamR*.pkl")
-        keys = [x[x.find("ON") : -4] for x in fit_files]
-        values = [pickle.load(open(f, "rb")) for f in fit_files]
-        os.chdir(return_directory)
-
-        fitness_dicts = [dict(zip(keys, values)), dict(zip(keys, values))]
-
-        for t, d in zip(zeo_list, fitness_dicts):
-            spike_in_fitness_dict[t] = d
-
-    elif plasmid == "Align-TF":
-        """
-        tet_list = [0, 0.5, 1, 5]
-        # Fitness values are from 2024-08-27_Align-TF_GBA_1_OD-test,
-        # TODO: move fitness values for spike-ins to somewhere else (not hard coded)
-
-        # TMP = 0, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.91051, 0.013531)
-        dict_list = [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 0.5, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.89862, 0.013568)
-        dict_list += [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 1, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.89142, 0.011612)
-        dict_list += [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 5, "pRamR-norm-01":
-        def fit_function(lig, conc):
-            return (0.70381, 0.012593)
-        dict_list += [{"pRamR-norm-01":fit_function}]
-
-        # TMP = 0, "pLacI-norm-01":
-        def fit_function(lig, conc):
-            return (0.94828, 0.014503)
-        dict_list[0]["pLacI-norm-01"] = fit_function
-
-        # TMP = 0.5, "pLacI-norm-01":
-        def fit_function(lig, conc):
-            return (0.90892, 0.015545)
-        dict_list[1]["pLacI-norm-01"] = fit_function
-
-        # TMP = 1, "pLacI-norm-01":
-        def fit_function(lig, conc):
-            return (0.88796, 0.021021)
-        dict_list[2]["pLacI-norm-01"] = fit_function
-
-        # TMP = 5, "pLacI-norm-01":
-        def fit_function(lig, conc):
-            return (0.64319, 0.020423)
-        dict_list[3]["pLacI-norm-01"] = fit_function
-        """
-
-        tmp_list = [0, 0.3, 1, 3]
-        # Fitness values are from 2024-11-22_Align-TF_GBA_1_OD-test,
-        # TODO: move fitness values for spike-ins to somewhere else (not hard coded)
-
-        # "pRamR-norm-02", does not depend on [TMP]:
-        def fit_function(lig, conc):
-            if lig == "1S-TIQ":
-                return (0.9795 - 0.0328 * conc / 250, 0.0094 + 0.0025 * conc / 250)
-            else:
-                return (0.9795, 0.0094)
-
-        dict_list = [{"pRamR-norm-02": fit_function}] * 4
-
-        # "pLacI-norm-02", does not depend on [TMP]:
-        def fit_function(lig, conc):
-            if lig == "1S-TIQ":
-                return (0.9767 - 0.0328 * conc / 250, 0.0096 + 0.0025 * conc / 250)
-            else:
-                return (0.9767, 0.0096)
-
-        for d in dict_list:
-            d["pLacI-norm-02"] = fit_function
-
-        for t, d in zip(tmp_list, dict_list):
-            spike_in_fitness_dict[t] = d
-
-    return spike_in_fitness_dict
-
-
 def fit_fitness_difference_params(plasmid="pVER", tet_conc=20, use_geo_mean=False):
     if plasmid == "pVER":
         # For LacI, params are: low_fitness, mid_g, fitness_n, low_fitness_err, mid_g_err, fitness_n_err,
@@ -1783,21 +1415,6 @@ def fit_fitness_difference_params(plasmid="pVER", tet_conc=20, use_geo_mean=Fals
     return params
 
 
-def ref_fit_correction(lig_conc, plasmid, ligand=None, spike_in=None):
-    if plasmid == "pRamR":
-        y = 1 - 0.25 * lig_conc / 500
-    elif ((plasmid == "pVER") and (ligand == "ONPF")) or (
-        (plasmid == "pCymR") and (ligand == "Per-OH")
-    ):
-        fit_dict = fitness_calibration_dict(plasmid=plasmid)
-        y_0 = fit_dict[0][spike_in](ligand, 0)[0]
-        y_conc = fit_dict[0][spike_in](ligand, lig_conc)[0]
-        y = y_conc / y_0
-    else:
-        y = 1
-    return y
-
-
 def fitness_corection(popt_corr, lig_conc, early_fitness, raw_fitness, crit_conc=200):
     # popt_corr = np.array([-0.83155726,  0.59388542])
     cor = []
@@ -1808,36 +1425,6 @@ def fitness_corection(popt_corr, lig_conc, early_fitness, raw_fitness, crit_conc
             x = e - r
             cor.append(line_funct(x, *popt_corr))
     return np.array(cor)
-
-
-def log_g_limits(plasmid="pVER"):
-    if plasmid == "pVER":
-        log_g_min = 0.5
-        log_g_max = 4.7
-        log_g_prior_scale = 0.15
-        wild_type_ginf = 2.44697108e04
-    elif plasmid == "pRamR":
-        log_g_min = np.log10(2)
-        log_g_max = 5
-        log_g_prior_scale = 0.15
-        wild_type_ginf = 10**4.67
-    elif plasmid == "pCymR":
-        log_g_min = np.log10(0.3)
-        log_g_max = np.log10(500)
-        log_g_prior_scale = 0.15
-        wild_type_ginf = 10**2.481
-    elif plasmid == "Align-TF":
-        log_g_min = np.log10(5)
-        log_g_max = np.log10(50000)
-        log_g_prior_scale = np.nan
-        wild_type_ginf = np.nan
-    else:
-        log_g_min = 1
-        log_g_max = 4.5
-        log_g_prior_scale = 0.3
-        wild_type_ginf = 1839
-
-    return (log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf)
 
 
 def log_plot_errorbars(log_mu, log_sig):
@@ -1931,39 +1518,6 @@ def density_scatter_cmap():
     new_cmap = colors.LinearSegmentedColormap.from_list("test_map", new_c_arr)
 
     return new_cmap
-
-
-def get_spike_in_name_from_inital(plasmid, initial):
-    if plasmid == "pVER":
-        if initial[-1] == "b":
-            spike_in = "AO-B"
-        elif initial[-1] == "e":
-            spike_in = "AO-E"
-        else:
-            raise ValueError(f"spike-in initial not recognized: {initial}")
-    elif plasmid == "pRamR":
-        if initial[-4:] == "sp01":
-            spike_in = "ON-01"
-        elif initial[-4:] == "sp02":
-            spike_in = "ON-02"
-        else:
-            raise ValueError(f"spike-in initial not recognized: {initial}")
-    elif plasmid == "pCymR":
-        if initial[-4:] == "sp09":
-            spike_in = "AO-09"
-        elif initial[-4:] == "rs20":
-            spike_in = "RS-20"
-        else:
-            raise ValueError(f"spike-in initial not recognized: {initial}")
-    elif plasmid == "Align-TF":
-        if initial[-4:] == "laci":
-            spike_in = "pLacI-norm-02"
-        elif initial[-4:] == "ramr":
-            spike_in = "pRamR-norm-02"
-        else:
-            raise ValueError(f"spike-in initial not recognized: {initial}")
-
-    return spike_in
 
 
 def decode_phred(c):
