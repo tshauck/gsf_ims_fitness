@@ -488,7 +488,7 @@ def get_stan_data(
 
     antibiotic_conc_list = np.array(antibiotic_conc_list)
 
-    spike_in = get_spike_in_name_from_inital(plasmid, initial)
+    spike_in = get_spike_in_name_from_initial(plasmid, initial)
 
     if old_style_columns:
         high_tet = antibiotic_conc_list[1]
@@ -787,7 +787,7 @@ def get_stan_data(
     return stan_data
 
 
-def get_spike_in_name_from_inital(plasmid, initial):
+def get_spike_in_name_from_initial(plasmid, initial):
     if plasmid == "pVER":
         if initial[-1] == "b":
             spike_in = "AO-B"

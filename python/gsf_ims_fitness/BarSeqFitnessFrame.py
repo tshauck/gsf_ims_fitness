@@ -32,10 +32,10 @@ import cmocean
 import seaborn as sns
 
 from . import fitness
-from . import stan_utility
-from . import plot_utils
-from . import align_tf_helpers
-from . import hill_function_utility
+from .utils import stan_utils
+from .utils import plot_utils
+from .utils import align_tf_utils
+from .utils import hill_function_utils
 
 sns.set()
 
@@ -962,10 +962,10 @@ class BarSeqFitnessFrame:
             else:
                 # model with some some zero-tet samples in refernce group and some in no_tet group
                 sm_file = "Barcode_fitness_all samples.stan"
-            stan_model = stan_utility.compile_model(sm_file, verbose=verbose)
+            stan_model = stan_utils.compile_model(sm_file, verbose=verbose)
         else:
             sm_no_tet_file = "Barcode_fitness_no_tet.stan"
-            stan_model_no_tet = stan_utility.compile_model(
+            stan_model_no_tet = stan_utils.compile_model(
                 sm_no_tet_file, verbose=verbose
             )
 
@@ -1101,7 +1101,7 @@ class BarSeqFitnessFrame:
                     stan_fit_list.append(stan_fit)
                 # Run fits for samples with antibiotic
                 sm_with_tet_file = "Barcode_fitness_with_tet.stan"
-                stan_model_with_tet = stan_utility.compile_model(
+                stan_model_with_tet = stan_utils.compile_model(
                     sm_with_tet_file, verbose=verbose
                 )
 
@@ -1382,7 +1382,7 @@ class BarSeqFitnessFrame:
         if spike_in_initial is None:
             spike_in_initial = self.get_default_initial()
 
-        spike_in = stan_utility.get_spike_in_name_from_inital(
+        spike_in = stan_utils.get_spike_in_name_from_initial(
             self.plasmid, spike_in_initial
         )
 
@@ -1410,7 +1410,7 @@ class BarSeqFitnessFrame:
 
             plot_list = plot_list_0
             if self.plasmid == "Align-TF" and ("norm" not in row.RS_name):
-                tf = align_tf_helpers.align_tf_from_RS_name(row.RS_name)
+                tf = align_tf_utils.align_tf_from_RS_name(row.RS_name)
                 df_tf = sample_plate_map
                 df_tf = df_tf[df_tf.transcription_factor == tf]
                 samples_with_tf = np.unique(df_tf.sample_id)
@@ -1930,7 +1930,7 @@ class BarSeqFitnessFrame:
 
         if initial is None:
             initial = self.get_default_initial()
-        spike_in = stan_utility.get_spike_in_name_from_inital(plasmid, initial)
+        spike_in = stan_utils.get_spike_in_name_from_initial(plasmid, initial)
 
         for samp in sample_list:
             df = sample_plate_map
@@ -2035,7 +2035,7 @@ class BarSeqFitnessFrame:
             if self.plasmid == "Align-TF":
                 # Only plot residuals for rows/variants that are in each sample
                 sel_tf = [
-                    (align_tf_helpers.align_tf_from_RS_name(x) == tf_dict[samp])
+                    (align_tf_utils.align_tf_from_RS_name(x) == tf_dict[samp])
                     or ("norm" in x)
                     for x in df_bc.RS_name
                 ]
@@ -2249,7 +2249,7 @@ class BarSeqFitnessFrame:
         key_params = params_list
 
         logger.info(f"    Using model from file: {sm_file}")
-        stan_model = stan_utility.compile_model(sm_file)
+        stan_model = stan_utils.compile_model(sm_file)
 
         quantile_list = [0.05, 0.25, 0.5, 0.75, 0.95]
         quantile_dim = len(quantile_list)
@@ -2283,15 +2283,15 @@ class BarSeqFitnessFrame:
                     logger.info(f"Manually setting log_x_max: {log_x_max}")
 
                 if len(lig_list) == 1:
-                    stan_init = stan_utility.init_stan_fit_single_ligand(
+                    stan_init = stan_utils.init_stan_fit_single_ligand(
                         stan_data, fit_fitness_difference_params
                     )
                 elif len(lig_list) == 2:
-                    stan_init = stan_utility.init_stan_fit_two_lig_two_tet(
+                    stan_init = stan_utils.init_stan_fit_two_lig_two_tet(
                         stan_data, fit_fitness_difference_params
                     )
                 elif len(lig_list) == 3:
-                    stan_init = stan_utility.init_stan_fit_three_ligand(
+                    stan_init = stan_utils.init_stan_fit_three_ligand(
                         stan_data, fit_fitness_difference_params, plasmid=plasmid
                     )
                 else:
@@ -2315,7 +2315,7 @@ class BarSeqFitnessFrame:
                 )
 
                 if re_stan_on_rhat:
-                    rhat_params = stan_utility.check_rhat_by_params(
+                    rhat_params = stan_utils.check_rhat_by_params(
                         stan_fit, rhat_cutoff=rhat_cutoff, stan_parameters=key_params
                     )
                     if len(rhat_params) > 0:
@@ -2333,7 +2333,7 @@ class BarSeqFitnessFrame:
                             output_dir=stan_output_dir,
                         )
 
-                        rhat_params = stan_utility.check_rhat_by_params(
+                        rhat_params = stan_utils.check_rhat_by_params(
                             stan_fit,
                             rhat_cutoff=rhat_cutoff,
                             stan_parameters=key_params,
@@ -2632,7 +2632,7 @@ class BarSeqFitnessFrame:
         key_params = [function_param] + fitness_params_list
 
         logger.info(f"    Using model from file: {sm_file}")
-        stan_model = stan_utility.compile_model(sm_file)
+        stan_model = stan_utils.compile_model(sm_file)
 
         log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf = fitness.log_g_limits(
             plasmid=plasmid
@@ -2645,7 +2645,7 @@ class BarSeqFitnessFrame:
         def stan_fit_row(st_row, return_fit=False):
             st_index = st_row.name
             tf = st_row.transcription_factor
-            ligand = align_tf_helpers.align_ligand_from_tf(tf)
+            ligand = align_tf_utils.align_ligand_from_tf(tf)
             logger.info()
             now = datetime.datetime.now()
             logger.info(
@@ -2697,7 +2697,7 @@ class BarSeqFitnessFrame:
                 fit_data = dict(stan_data)
                 del fit_data["ligand_id"]
 
-                stan_init = stan_utility.init_stan_fit_single_point(stan_data)
+                stan_init = stan_utils.init_stan_fit_single_point(stan_data)
 
                 try:
                     if tf == "all":
@@ -2717,7 +2717,7 @@ class BarSeqFitnessFrame:
                     )
 
                     if re_stan_on_rhat:
-                        rhat_params = stan_utility.check_rhat_by_params(
+                        rhat_params = stan_utils.check_rhat_by_params(
                             stan_fit,
                             rhat_cutoff=rhat_cutoff,
                             stan_parameters=key_params,
@@ -2737,7 +2737,7 @@ class BarSeqFitnessFrame:
                                 output_dir=stan_output_dir,
                             )
 
-                            rhat_params = stan_utility.check_rhat_by_params(
+                            rhat_params = stan_utils.check_rhat_by_params(
                                 stan_fit,
                                 rhat_cutoff=rhat_cutoff,
                                 stan_parameters=key_params,
@@ -2825,7 +2825,7 @@ class BarSeqFitnessFrame:
 
         # Then, add the fit results to barcode_frame:
         tf_list = np.unique(sample_plate_map.transcription_factor)
-        ligand_list = [align_tf_helpers.align_ligand_from_tf(tf) for tf in tf_list]
+        ligand_list = [align_tf_utils.align_ligand_from_tf(tf) for tf in tf_list]
         non_zero_lig_conc_dict = {}
         for tf, lig in zip(tf_list, ligand_list):
             df = sample_plate_map
@@ -3049,7 +3049,7 @@ class BarSeqFitnessFrame:
         quantile_dim = len(quantile_list)
 
         logger.info(f"    Using model from file: {stan_GP_model}")
-        stan_model = stan_utility.compile_model(stan_GP_model)
+        stan_model = stan_utils.compile_model(stan_GP_model)
 
         log_g_min, log_g_max, log_g_prior_scale, wild_type_ginf = fitness.log_g_limits(
             plasmid=plasmid
@@ -3075,7 +3075,7 @@ class BarSeqFitnessFrame:
                     st_row, initial=initial, is_gp_model=True
                 )
 
-                stan_init = stan_utility.init_stan_GP_fit(
+                stan_init = stan_utils.init_stan_GP_fit(
                     fit_fitness_difference_params,
                     single_tet=single_tet,
                     single_ligand=single_ligand,
@@ -3094,7 +3094,7 @@ class BarSeqFitnessFrame:
                 )
 
                 if re_stan_on_rhat:
-                    rhat_params = stan_utility.check_rhat_by_params(
+                    rhat_params = stan_utils.check_rhat_by_params(
                         stan_fit, rhat_cutoff=rhat_cutoff, stan_parameters=key_params
                     )
                     if len(rhat_params) > 0:
@@ -3112,7 +3112,7 @@ class BarSeqFitnessFrame:
                             output_dir=stan_output_dir,
                         )
 
-                        rhat_params = stan_utility.check_rhat_by_params(
+                        rhat_params = stan_utils.check_rhat_by_params(
                             stan_fit,
                             rhat_cutoff=rhat_cutoff,
                             stan_parameters=key_params,
@@ -4126,7 +4126,7 @@ class BarSeqFitnessFrame:
                     )
                     ax.set_xscale("symlog", linthresh=linthresh)
                     if (self.plasmid == "Align-TF") and (tf != "all"):
-                        x_lab = align_tf_helpers.align_ligand_from_tf(tf)
+                        x_lab = align_tf_utils.align_ligand_from_tf(tf)
                     else:
                         x_lab = "], [".join(ligand_list)
                     ax.set_xlabel(f"[{x_lab}] (umol/L)", size=ax_label_size)
@@ -4348,7 +4348,7 @@ class BarSeqFitnessFrame:
                         fitness_n,
                         *argv,
                     ):
-                        return hill_function_utility.double_hill_funct(
+                        return hill_function_utils.double_hill_funct(
                             x,
                             10**log_g_min,
                             10**log_g_max,
@@ -4374,7 +4374,7 @@ class BarSeqFitnessFrame:
                         fitness_n,
                         *argv,
                     ):
-                        return hill_function_utility.double_hill_funct(
+                        return hill_function_utils.double_hill_funct(
                             x,
                             10**log_g_min,
                             10**log_g_max,
@@ -4388,7 +4388,7 @@ class BarSeqFitnessFrame:
                 else:
 
                     def fit_funct(x, g_min, g_max, x_50, nx):
-                        return hill_function_utility.double_hill_funct(
+                        return hill_function_utils.double_hill_funct(
                             x,
                             g_min,
                             g_max,
@@ -4428,7 +4428,7 @@ class BarSeqFitnessFrame:
                         mid_g,
                         fitness_n,
                     ):
-                        return hill_function_utility.double_hill_funct(
+                        return hill_function_utils.double_hill_funct(
                             x,
                             10**log_g0,
                             10**log_ginf,
@@ -4936,7 +4936,7 @@ class BarSeqFitnessFrame:
     ):
         if spike_in_initial is None:
             spike_in_initial = self.get_default_initial()
-        spike_in = stan_utility.get_spike_in_name_from_inital(
+        spike_in = stan_utils.get_spike_in_name_from_initial(
             self.plasmid, spike_in_initial
         )
         logger.info(
@@ -5006,7 +5006,7 @@ class BarSeqFitnessFrame:
             stan_model_file = stan_model_file[:-4] + "robust.stan"
 
         if run_stan_fit:
-            fitness_model = stan_utility.compile_model(stan_model_file)
+            fitness_model = stan_utils.compile_model(stan_model_file)
 
         bs_frame = self.barcode_frame
         if RS_list is None:
@@ -5191,7 +5191,7 @@ class BarSeqFitnessFrame:
 
                                     if plasmid == "Align-TF":
                                         # For Align-TF project, measurements at zero ligand and one non-zero ligand per TF
-                                        tf = align_tf_helpers.align_tf_from_ligand(lig)
+                                        tf = align_tf_utils.align_tf_from_ligand(lig)
                                         plot_df_align = plot_df
                                         plot_df_align = plot_df_align[
                                             plot_df_align.transcription_factor == tf
@@ -5459,7 +5459,7 @@ class BarSeqFitnessFrame:
                                         )
                     elif len(df) == 0:
                         if plasmid == "Align-TF":
-                            tf = align_tf_helpers.align_tf_from_ligand(lig)
+                            tf = align_tf_utils.align_tf_from_ligand(lig)
                             if ("norm" not in RS_name) and (tf in plas):
                                 logger.info(
                                     f"No cytometry data for {RS_name}, {plas} with {lig}"
@@ -5582,7 +5582,7 @@ class BarSeqFitnessFrame:
 
                         if re_stan_on_rhat:
                             logger.info("    Checking r_hat...")
-                            rhat_params = stan_utility.check_rhat_by_params(
+                            rhat_params = stan_utils.check_rhat_by_params(
                                 stan_fit,
                                 rhat_cutoff=rhat_cutoff,
                                 stan_parameters=key_params,
@@ -6319,7 +6319,7 @@ class BarSeqFitnessFrame:
             if tf == "all":
                 return None
 
-            lig = align_tf_helpers.align_ligand_from_tf(tf)
+            lig = align_tf_utils.align_ligand_from_tf(tf)
             sample_map = sample_map[sample_map.transcription_factor == tf]
 
             ligand_concentrations = np.unique(sample_map[lig])
@@ -6477,7 +6477,7 @@ class BarSeqFitnessFrame:
         )
         ramr_resid_frame = getattr(self, "ramr_resid_frame", None)
 
-        stan_data = stan_utility.get_stan_data(
+        stan_data = stan_utils.get_stan_data(
             st_row=st_row,
             plot_df=plot_df,
             antibiotic_conc_list=antibiotic_conc_list,
